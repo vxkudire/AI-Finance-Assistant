@@ -1,0 +1,24 @@
+# Orchestration
+langgraph>=0.4
+langchain>=0.3
+langchain-core>=0.3
+langchain-openai>=0.3
+langchain-text-splitters>=0.3
+
+# Vector DB
+pinecone>=6.0
+
+# Data
+yfinance
+feedparser
+pypdf
+
+# App / utils
+streamlit
+pandas
+pydantic>=2.0
+pyyaml
+python-dotenv
+
+# Tests
+pytest
