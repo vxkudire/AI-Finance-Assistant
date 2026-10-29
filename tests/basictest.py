@@ -1,6 +1,8 @@
 import argparse
 import sys
 from pathlib import Path
+
+from src.agents import AGENT_CLASSES
 from src.core.config import load_config
 
 print(str(Path(__file__).resolve().parents[1]))
@@ -17,3 +19,5 @@ print(f"{embeddings['provider']}:{embeddings['model']}")
 ap = argparse.ArgumentParser(description="Ingest the knowledge base into Pinecone")
 ap.add_argument("--dir", help="override knowledge base directory")
 print(ap.parse_args().dir)
+
+print([(k,v) for k,v in AGENT_CLASSES.items()])

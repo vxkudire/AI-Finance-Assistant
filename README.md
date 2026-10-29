@@ -54,8 +54,17 @@ PINECONE_API_KEY=sk-...your-key-here...
 ```
 
 ### 4. Run the application
+#### 4.1 Ingest the knowledge base
 ```bash
-python -m src.workflow.main
+python -m src.rag.ingest          # creates the index and loads the sample knowledge base
+```
+#### 4.2 Run the workflow graph on CLI
+```bash
+python -m src.workflow.graph
+```
+#### 4.3 Run the Streamlit web app
+```bash
+streamlit run src/web_app/app.py
 ```
 
 

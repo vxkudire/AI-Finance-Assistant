@@ -1,4 +1,4 @@
-"""LangGraph assembly:   START -> router -> (one of six agents) -> END,  with conversation memory per thread."""
+"""LangGraph assembly:   START -> router -> (one of six agents) -> END, with conversation memory per thread."""
 import uuid
 
 from langchain_core.messages import HumanMessage
@@ -23,11 +23,11 @@ def build_graph(checkpointer=None):
     return g.compile(checkpointer=checkpointer or MemorySaver())
 
 
-def ask(graph, text: str, thread_id: str = "default", portfolio: list[dict] | None = None) -> dict:
+def ask(compiled_graph, text: str, thread_id: str = "default", portfolio: list[dict] | None = None) -> dict:
     payload: dict = {"messages": [HumanMessage(content=text)]}
     if portfolio is not None:           # [] clears a previously supplied portfolio
         payload["portfolio"] = portfolio
-    return graph.invoke(payload, config={"configurable": {"thread_id": thread_id}})
+    return compiled_graph.invoke(payload, config={"configurable": {"thread_id": thread_id}})
 
 
 if __name__ == "__main__":      # python -m src.workflow.graph
