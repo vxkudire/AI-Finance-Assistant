@@ -29,22 +29,22 @@ rag:
 agents:
   router:
     temperature: 0
-  finance_qa:
+  finance_qa_agent:
     rag_namespaces: [finance_qa]
     model: gpt-4o
     provider: openai
-  portfolio:
+  portfolio_agent:
     rag_namespaces: [portfolio, finance_qa]
-  market:
+  market_agent:
     rag_namespaces: [finance_qa]
-  goal_planning:
+  goal_planning_agent:
     rag_namespaces: [goal_planning]
     default_annual_return: 0.06      # illustrative assumption, always disclosed to the user
     model: gpt-4o
     provider: openai
-  news:
+  news_agent:
     rag_namespaces: [finance_qa]
-  tax:
+  tax_agent:
     rag_namespaces: [tax]
 
 

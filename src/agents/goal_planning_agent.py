@@ -20,8 +20,8 @@ class GoalParams(BaseModel):
 
 
 class GoalPlanningAgent(BaseAgent):
-    key = "goal_planning"
-    display_name = "Goal Planning"
+    key = "goal_planning_agent"
+    display_name = "Goal Planning Agent"
     system_prompt = """You are the Goal Planning Agent. You help users set SMART financial goals (emergency fund,
 down payment, education, retirement) and understand the savings needed. Use the computed scenarios exactly as
 given, explain the trade-off between time, contribution and return, and note that returns are illustrative

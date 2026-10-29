@@ -3,6 +3,7 @@
 Flow of run():   retrieve (Pinecone) -> gather_context (live data / calculations) -> LLM -> answer
 Subclasses only define: key, display_name, system_prompt and (optionally) gather_context().
 """
+from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, SystemMessage
 
 from src.core.config import agent_cfg
@@ -40,7 +41,7 @@ class BaseAgent:
         return ""
 
     # ---- internals -----------------------------------------------------------
-    def _retrieve(self, query: str):
+    def _retrieve(self, query: str) -> list[Document]:
         if not (self.use_rag and self.namespaces and query):
             return []
         try:
@@ -56,7 +57,7 @@ class BaseAgent:
             self.log.warning("gather_context failed: %s", exc)
             return "Live data was unavailable for this request; tell the user."
 
-    def _build_prompt(self, state: AgentState, docs, live: str):
+    def _build_prompt(self, state: AgentState, docs: list[Document], live: str):
         parts = [self.system_prompt, COMMON_RULES]
         if docs:
             parts.append("## Retrieved knowledge-base context\n" + format_context(docs))

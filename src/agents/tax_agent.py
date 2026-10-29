@@ -3,8 +3,8 @@ from src.core.base_agent import BaseAgent
 
 
 class TaxAgent(BaseAgent):
-    key = "tax"
-    display_name = "Tax Education"
+    key = "tax_agent"
+    display_name = "Tax Education Agent"
     system_prompt = """You are the Tax Education Agent. You explain tax concepts and account types (assume the
 US unless told otherwise): marginal vs. effective rates, capital gains, dividends, 401(k), IRA, Roth, HSA,
 529 plans, tax-loss harvesting, RMDs. Tax rules and limits change every year, so do not state specific

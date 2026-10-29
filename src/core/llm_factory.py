@@ -4,6 +4,7 @@ from functools import lru_cache
 
 from langchain.chat_models import init_chat_model
 from langchain.embeddings import init_embeddings
+from langchain_core.embeddings import Embeddings
 
 from src.core.config import agent_cfg, load_config
 
@@ -29,6 +30,6 @@ def _build_llm(provider: str, model: str, temperature, max_tokens):
 
 
 @lru_cache(maxsize=1)
-def get_embeddings():
+def get_embeddings() -> Embeddings:
     e = load_config()["embeddings"]
     return init_embeddings(f"{e['provider']}:{e['model']}")

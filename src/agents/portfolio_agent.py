@@ -5,8 +5,8 @@ from src.data.portfolio import analyze_portfolio, format_portfolio_report
 
 
 class PortfolioAgent(BaseAgent):
-    key = "portfolio"
-    display_name = "Portfolio Analysis"
+    key = "portfolio_agent"
+    display_name = "Portfolio Analysis Agent"
     system_prompt = """You are the Portfolio Analysis Agent. You review a user's holdings for EDUCATIONAL purposes:
 diversification, concentration risk, sector/asset mix, and gain/loss. Walk through the computed metrics, explain
 what they mean, and describe general principles (e.g. why concentration raises risk, what rebalancing is).

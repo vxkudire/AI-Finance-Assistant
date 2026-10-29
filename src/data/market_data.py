@@ -1,5 +1,6 @@
 """Market data via yfinance (free, can be ~15 min delayed). Swap this module for Polygon/Alpha Vantage/etc. if needed."""
 from datetime import datetime, timezone
+from typing import Any
 
 import yfinance as yf
 
@@ -21,7 +22,7 @@ def get_quote(ticker: str) -> dict | None:
             "change_pct": (price / prev - 1) * 100 if prev else 0.0}
 
 
-def get_quotes(tickers: list[str]) -> list[dict]:
+def get_quotes(tickers: list[str]) -> list[dict[Any, Any] | None]:
     return [q for q in (get_quote(t) for t in tickers) if q]
 
 

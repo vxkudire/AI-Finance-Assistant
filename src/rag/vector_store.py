@@ -10,6 +10,7 @@ import uuid
 from functools import lru_cache
 
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from pinecone import Pinecone, ServerlessSpec
 
 from src.core.config import load_config
@@ -23,8 +24,11 @@ def _get(obj, key):
     return obj[key] if isinstance(obj, dict) else getattr(obj, key)
 
 
+"""
+PineconeStore is a wrapper around the Pinecone SDK to provide a simple interface for adding documents and performing similarity searches within a specific namespace.
+"""
 class PineconeStore:
-    def __init__(self, index, embedding, namespace: str):
+    def __init__(self, index, embedding: Embeddings, namespace: str):
         self.index, self.embedding, self.namespace = index, embedding, namespace
 
     def add_documents(self, docs: list[Document], ids: list[str] | None = None, batch_size: int = 100) -> list[str]:

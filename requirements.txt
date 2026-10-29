@@ -22,3 +22,5 @@ python-dotenv
 
 # Tests
 pytest
+
+typing-extensions

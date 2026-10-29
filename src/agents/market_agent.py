@@ -7,8 +7,8 @@ from src.utils.helpers import extract_tickers, last_user_text
 
 
 class MarketAgent(BaseAgent):
-    key = "market"
-    display_name = "Market Analysis"
+    key = "market_agent"
+    display_name = "Market Analysis Agent"
     system_prompt = """You are the Market Analysis Agent. You explain what is happening in markets using the live
 quote data provided: describe moves, put them in context (index vs. single stock, daily noise vs. trend) and
 explain the concepts involved (volatility, valuation, volume, sectors). Quote only numbers present in the live

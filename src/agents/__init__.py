@@ -6,10 +6,10 @@ from .portfolio_agent import PortfolioAgent
 from .tax_agent import TaxAgent
 
 AGENT_CLASSES = {
-    "finance_qa": FinanceQAAgent,
-    "portfolio": PortfolioAgent,
-    "market": MarketAgent,
-    "goal_planning": GoalPlanningAgent,
-    "news": NewsAgent,
-    "tax": TaxAgent,
+    "finance_qa_agent": FinanceQAAgent,
+    "portfolio_agent": PortfolioAgent,
+    "market_agent": MarketAgent,
+    "goal_planning_agent": GoalPlanningAgent,
+    "news_agent": NewsAgent,
+    "tax_agent": TaxAgent,
 }
