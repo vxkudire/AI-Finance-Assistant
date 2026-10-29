@@ -111,3 +111,53 @@ Map namespaces to agents under `agents.<name>.rag_namespaces` in `config.yaml`.
 1. yfinance data is free but can be delayed; replace `src/data/market_data.py` for a paid feed.
 2. `MemorySaver` keeps conversation memory in-process; use a SQLite/Postgres checkpointer for persistence.
 3. Educational use only - not financial, investment or tax advice.
+
+## Deploying to AWS App Runner
+
+The included `Dockerfile` packages the Streamlit app for AWS App Runner on port `8080`. These steps use Amazon ECR to store the image and the AWS Console to create the App Runner service. You need an AWS account, Docker Desktop, and the AWS CLI configured with credentials allowed to create ECR repositories and App Runner services.
+
+### 1. Prepare Pinecone
+
+The app uses Pinecone for its knowledge base. From the project root, configure `OPENAI_API_KEY` and `PINECONE_API_KEY` locally (for example in an untracked `.env` file), then ingest the sample content once:
+
+```powershell
+python -m src.rag.ingest
+```
+
+The configured Pinecone index is shared by the deployed app. Do not put `.env` or API keys in the Docker image or source repository.
+
+### 2. Build and push the image to ECR
+
+In PowerShell from the project root, set the AWS region and get your account ID:
+
+```powershell
+$Region = "us-east-1"
+$AccountId = aws sts get-caller-identity --query Account --output text
+$Image = "$AccountId.dkr.ecr.$Region.amazonaws.com/ai-finance-assistant:latest"
+```
+
+Create the ECR repository (once), authenticate Docker, then build and push a Linux AMD64 image:
+
+```powershell
+aws ecr create-repository --repository-name ai-finance-assistant --region $Region
+aws ecr get-login-password --region $Region | docker login --username AWS --password-stdin "$AccountId.dkr.ecr.$Region.amazonaws.com"
+docker buildx build --platform linux/amd64 --load -t ai-finance-assistant .
+docker tag ai-finance-assistant:latest $Image
+docker push $Image
+```
+
+If the ECR repository already exists, skip `create-repository`. Repeat the login, build, tag, and push commands to publish updates.
+
+### 3. Create the App Runner service
+
+In the AWS Console, open **App Runner → Create service**, select **Container registry** and **Amazon ECR**, then choose the `ai-finance-assistant` image and `latest` tag. Use automatic deployment if you want App Runner to deploy when a new image is pushed; otherwise select manual deployment. For a private ECR image, allow App Runner to create or select an ECR access role.
+
+Set the service's **Port** to `8080`. Add `OPENAI_API_KEY` and `PINECONE_API_KEY` as runtime environment variables, and add any optional variables such as `LLM_MODEL`, `LLM_PROVIDER`, or `LOG_LEVEL` as needed. For production, store API keys in AWS Secrets Manager and configure App Runner to read them using an instance role rather than putting secrets in the image or repository.
+
+Create the service and wait until it is running, then open its default App Runner URL. To deploy a changed image when using manual deployment, push the updated image and select **Deploy** for the service.
+
+### Notes
+
+- App Runner incurs AWS charges; check current App Runner, ECR, and data-transfer pricing for your region.
+- Conversation history uses in-process `MemorySaver` and is not durable across service restarts or scaling. This deployment does not add persistent conversation storage.
+- The app needs outbound network access to OpenAI, Pinecone, market-data, and news endpoints.
