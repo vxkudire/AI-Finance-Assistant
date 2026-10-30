@@ -2,6 +2,7 @@
 import yfinance as yf
 
 from src.data.market_data import get_quote
+from src.data.yfinance_compat import ignore_yfinance_dataframe_inplace_warning
 
 
 def _num(v):
@@ -14,7 +15,8 @@ def _num(v):
 
 def _sector(ticker: str) -> str:
     try:
-        info = yf.Ticker(ticker).info
+        with ignore_yfinance_dataframe_inplace_warning():
+            info = yf.Ticker(ticker).info
         return info.get("sector") or info.get("quoteType") or "Unknown"
     except Exception:
         return "Unknown"

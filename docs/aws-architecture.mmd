@@ -1,0 +1,15 @@
+flowchart LR
+    Dev["Developer PC<br/>Docker + AWS CLI"] -->|docker push| ECR[("Amazon ECR<br/>ai-finance-assistant")]
+    subgraph AWS["AWS region"]
+        ECR -->|pull image| Task
+        SM["Secrets Manager<br/>OPENAI_API_KEY<br/>PINECONE_API_KEY"] -->|"injected at start"| Task
+        subgraph ECS["ECS cluster (Fargate)"]
+            Task["Service: 1 task<br/>Streamlit container :8080"]
+        end
+        Task --> CW["CloudWatch Logs"]
+        SG["Security group<br/>8080 from your IP"] -.-> Task
+    end
+    Browser([Your browser]) -->|"HTTP :8080 (test)"| Task
+    Task -->|HTTPS| OpenAI[("OpenAI API")]
+    Task -->|HTTPS| Pine[("Pinecone")]
+    Task -->|HTTPS| Ext[("yfinance / RSS feeds")]

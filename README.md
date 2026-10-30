@@ -10,6 +10,68 @@ The system consists of six specialized agents:
 5.	News Synthesizer Agent: Summarizes and contextualizes financial news
 6.	Tax Education Agent: Explains tax concepts and account types
 
+### Application architecture
+```mermaid
+flowchart TD
+    User([User]) --> UI["Streamlit web app<br/>src/web_app/app.py"]
+    UI -->|"question + optional portfolio"| Router
+
+    subgraph Graph["LangGraph workflow (MemorySaver: per-thread memory)"]
+        Router["Router<br/>LLM intent classifier + keyword fallback"]
+        Router --> Agents["Six specialised agents<br/>Finance Q&A, Portfolio, Market,<br/>Goal Planning, News, Tax<br/>(retrieve, gather context, LLM answer)"]
+    end
+
+    Agents -->|"answer + sources + disclaimer"| UI
+
+    Agents -->|"chat + embeddings"| OpenAI[("OpenAI")]
+    Agents -->|"top-k retrieval by namespace"| Pine[("Pinecone index<br/>finance-education")]
+    Agents -->|"quotes (Portfolio, Market)"| YF[("yfinance")]
+    Agents -->|"headlines (News)"| RSS[("RSS news feeds")]
+    Agents -->|"calculations (Goal Planning)"| Calc["Python calculators"]
+
+    KB["Knowledge base<br/>src/data/knowledge_base/*"] -->|"python -m src.rag.ingest"| Pine
+    Cfg["config.yaml + env vars"] -.-> Graph
+```
+
+### AWS deployment architecture
+```mermaid
+flowchart LR
+    Dev["Developer PC<br/>Docker + AWS CLI"] -->|docker push| ECR[("Amazon ECR<br/>ai-finance-assistant")]
+    subgraph AWS["AWS region"]
+        ECR -->|pull image| Task
+        SM["Secrets Manager<br/>OPENAI_API_KEY<br/>PINECONE_API_KEY"] -->|"injected at start"| Task
+        subgraph ECS["ECS cluster (Fargate)"]
+            Task["Service: 1 task<br/>Streamlit container :8080"]
+        end
+        Task --> CW["CloudWatch Logs"]
+        SG["Security group<br/>8080 from your IP"] -.-> Task
+    end
+    Browser([Your browser]) -->|"HTTP :8080 (test)"| Task
+    Task -->|HTTPS| OpenAI[("OpenAI API")]
+    Task -->|HTTPS| Pine[("Pinecone")]
+    Task -->|HTTPS| Ext[("yfinance / RSS feeds")]
+```
+For a shared deployment, place an Application Load Balancer (HTTPS + ACM certificate) in front of the task.
+
+
+## Technical Stack:
+### Main Components:
+- **LangChain**: Provides the framework for building and managing the agents, enabling them to communicate and collaborate effectively
+- **LangGraph**: Orchestrates the multi-agent workflow, enabling seamless interaction between agents
+- **PineconeDB for RAG**: Provides retrieval-augmented generation capabilities, allowing agents to access a rich knowledge base for informed responses
+- **PostgreSQL for Conversation History**: Serves as a persistent storage solution for conversation history, enabling context-aware interactions
+- **Streamlit**: Offers a user-friendly web interface for interacting with the agents, making it accessible to a wide audience
+- **OpenAI API**: Powers the natural language understanding and generation capabilities of the agents, with the flexibility to swap in other providers as needed
+- **YFinance**: Provides real-time financial data and market insights
+- **RSS Feeds**: Supplies up-to-date financial news for the News Synthesizer Agent
+
+### Deployment Components:
+- **Docker**: Enables containerization of the application for consistent deployment across environments
+- **AWS ECS on Fargate**: Facilitates scalable and serverless deployment of the application, ensuring high availability and performance
+- **AWS ECR**: Provides a fully managed Docker container registry that makes it easy to store, manage, and deploy Docker container images
+- **AWS Secrets Manager**: Securely stores and manages sensitive information such as API keys, ensuring that they are not exposed in the codebase or configuration files
+- **AWS CloudWatch**: Monitors and logs application performance and operational health, providing insights for troubleshooting and optimization
+- **AWS IAM**: Manages access to AWS services and resources securely
 
 ## Installation
 ### 1. Clone the repository
@@ -108,56 +170,98 @@ Map namespaces to agents under `agents.<name>.rag_namespaces` in `config.yaml`.
 3. Add the intent to `RouteDecision`/`ROUTER_PROMPT` in `src/workflow/router.py`.
 
 ## Notes
+Usernames identify a single conversation in the CLI and Streamlit app. With `POSTGRES_URL` configured, enter the same username to resume it across restarts; `MemorySaver` is process-local. Usernames are not authenticated, so add login before exposing the app to multiple users.
+
 1. yfinance data is free but can be delayed; replace `src/data/market_data.py` for a paid feed.
-2. `MemorySaver` keeps conversation memory in-process; use a SQLite/Postgres checkpointer for persistence.
+2. Conversation memory uses `PostgresSaver` when `POSTGRES_URL` is set (e.g. `postgresql://user:pass@localhost:5432/finance`); otherwise it falls back to the in-process `MemorySaver`.
 3. Educational use only - not financial, investment or tax advice.
 
-## Deploying to AWS App Runner
+## Deploying to AWS ECS on Fargate
 
-The included `Dockerfile` packages the Streamlit app for AWS App Runner on port `8080`. These steps use Amazon ECR to store the image and the AWS Console to create the App Runner service. You need an AWS account, Docker Desktop, and the AWS CLI configured with credentials allowed to create ECR repositories and App Runner services.
+This guide deploys the Streamlit app as a single ECS task on AWS Fargate. Docker builds the image, Amazon ECR stores it, and ECS runs it on port `8080`. You need Docker Desktop, AWS CLI v2, and AWS credentials authorized to use ECR and create ECS resources. The commands below use PowerShell and the AWS Console.
 
-### 1. Prepare Pinecone
+**Important:** The app has no user authentication, and its test URL uses unencrypted HTTP. Restrict test access to your own IP and use only non-sensitive sample data. Before sharing it or entering personal/financial information, add authentication and HTTPS. Fargate, ECR storage, CloudWatch Logs, Secrets Manager, and any load balancer can incur charges.
 
-The app uses Pinecone for its knowledge base. From the project root, configure `OPENAI_API_KEY` and `PINECONE_API_KEY` locally (for example in an untracked `.env` file), then ingest the sample content once:
+### 1. Ingest the knowledge base
+
+The app retrieves its knowledge base from Pinecone. From the project root, set `OPENAI_API_KEY` and `PINECONE_API_KEY` in your local, untracked `.env` file, then run:
 
 ```powershell
 python -m src.rag.ingest
 ```
 
-The configured Pinecone index is shared by the deployed app. Do not put `.env` or API keys in the Docker image or source repository.
+This creates/populates the Pinecone index configured in `config.yaml`. The deployed app uses that same index. Do not commit `.env` or put keys in the image.
 
-### 2. Build and push the image to ECR
+### 2. Build and push the container image
+First Login to AWS
+```powershell
+$env:AWS_PROFILE="nuvepro"
+aws configure
+```
+The terminal will prompt you for four inputs. Map them exactly to your Nuvepro dashboard like this:
+AWS Access Key ID [None]: <accessId>
+AWS Secret Access Key [None]: <accessKey>
+Default region name [None]: us-east-1
+Default output format [None]: json
 
-In PowerShell from the project root, set the AWS region and get your account ID:
+Verify the Login
+```powershell
+aws sts get-caller-identity
+```
+
+In PowerShell from the project root, choose the AWS region. Use the same region for ECR and ECS. Confirm the CLI is signed in and get your account ID:
 
 ```powershell
 $Region = "us-east-1"
 $AccountId = aws sts get-caller-identity --query Account --output text
-$Image = "$AccountId.dkr.ecr.$Region.amazonaws.com/ai-finance-assistant:latest"
+$Repository = "ai-finance-assistant-VenkateshKudire"
+$Registry = "$AccountId.dkr.ecr.$Region.amazonaws.com"
+$Tag = "v1"
+$Image = "${Registry}/${Repository}:${Tag}"
 ```
 
-Create the ECR repository (once), authenticate Docker, then build and push a Linux AMD64 image:
+Run `$Image` to print the full image URI; you will paste that value into the ECS task definition.
+
+If the identity command fails, sign in/configure the AWS CLI before continuing. Create the ECR repository once (skip this if it already exists), authenticate Docker, then build and push:
 
 ```powershell
-aws ecr create-repository --repository-name ai-finance-assistant --region $Region
-aws ecr get-login-password --region $Region | docker login --username AWS --password-stdin "$AccountId.dkr.ecr.$Region.amazonaws.com"
-docker buildx build --platform linux/amd64 --load -t ai-finance-assistant .
-docker tag ai-finance-assistant:latest $Image
+aws ecr create-repository --repository-name $Repository --region $Region
+aws ecr get-login-password --region $Region | docker login --username AWS --password-stdin $Registry
+docker buildx build --platform linux/amd64 --load -t "${Repository}:${Tag}" .
+docker tag "${Repository}:${Tag}" $Image
 docker push $Image
 ```
 
-If the ECR repository already exists, skip `create-repository`. Repeat the login, build, tag, and push commands to publish updates.
+Keep the image tag for the task definition in the next step. For each update, set `$Tag` to a new value (for example, `v2`), recalculate `$Image`, then run the build, tag, and push commands again. Unique tags make it clear which image ECS is running.
 
-### 3. Create the App Runner service
+### 3. Create an ECS cluster and task definition
 
-In the AWS Console, open **App Runner → Create service**, select **Container registry** and **Amazon ECR**, then choose the `ai-finance-assistant` image and `latest` tag. Use automatic deployment if you want App Runner to deploy when a new image is pushed; otherwise select manual deployment. For a private ECR image, allow App Runner to create or select an ECR access role.
+In the AWS Console, make sure the selected region matches `$Region`, then:
 
-Set the service's **Port** to `8080`. Add `OPENAI_API_KEY` and `PINECONE_API_KEY` as runtime environment variables, and add any optional variables such as `LLM_MODEL`, `LLM_PROVIDER`, or `LOG_LEVEL` as needed. For production, store API keys in AWS Secrets Manager and configure App Runner to read them using an instance role rather than putting secrets in the image or repository.
+1. Open **Amazon ECS → Clusters → Create cluster** and create a cluster with AWS Fargate.
+2. In **Task definitions**, create a new **Fargate** task definition for **Linux/x86_64**. Start with `0.5 vCPU` and `1 GB` memory.
+3. Configure a task execution role. The standard `AmazonECSTaskExecutionRolePolicy` allows ECS to pull from ECR and write logs. Create two separate plaintext secrets in AWS Secrets Manager, one for each API key. Grant the execution role `secretsmanager:GetSecretValue` for those secret ARNs; if the secrets use a customer-managed KMS key, grant the required decrypt permission as well. ECS retrieves these secrets when it starts the task.
+4. Add a container named `ai-finance-assistant`, using the full ECR image URI from `$Image`. Set its port mapping to TCP `8080` and enable CloudWatch Logs.
+5. In the container's **Secrets** section, map the Secrets Manager values to environment names `OPENAI_API_KEY` and `PINECONE_API_KEY`. Do not enter API keys as plain-text environment variables. Optional non-secret values such as `LLM_MODEL`, `LLM_PROVIDER`, or `LOG_LEVEL` may be set as environment variables.
+6. Create the task definition. The application does not call AWS APIs itself, so it does not need application permissions in a task role.
 
-Create the service and wait until it is running, then open its default App Runner URL. To deploy a changed image when using manual deployment, push the updated image and select **Deploy** for the service.
+### 4. Run the ECS service
 
-### Notes
+From the cluster, choose **Create service**, select the task definition, and choose **Fargate** with desired task count `1`. For a test deployment, select a VPC with a public subnet whose route table has a route to an internet gateway, enable **Auto-assign public IP**, and attach a security group with:
 
-- App Runner incurs AWS charges; check current App Runner, ECR, and data-transfer pricing for your region.
-- Conversation history uses in-process `MemorySaver` and is not durable across service restarts or scaling. This deployment does not add persistent conversation storage.
-- The app needs outbound network access to OpenAI, Pinecone, market-data, and news endpoints.
+- Inbound TCP port `8080` from **your current public IP address only** (CIDR `/32`).
+- Outbound access to the internet, needed for OpenAI, Pinecone, market data, and news.
+
+Create the service and wait for the task to show **Running**. In the service's **Tasks** tab, open the task's networking details and browse to `http://<task-public-ip>:8080`. This address can change whenever ECS replaces the task; update the security-group rule if your own IP changes.
+
+For a stable, shared deployment, use an Application Load Balancer with an HTTPS listener and an ACM certificate. Allow inbound HTTPS to the load balancer, and configure the task security group to accept port `8080` only from the load balancer's security group. Because the app currently has no authentication, add an authentication layer before making it available to other users.
+
+### 5. Deploy an update
+
+Build and push the new image using a **new tag**. In **ECS → Task definitions**, create a new revision that uses the new image URI, then update the service to use that revision. Wait for the deployment to complete and confirm the replacement task is **Running** before removing the previous task definition revision or image.
+
+### Cleanup and limitations
+
+- Conversation history uses in-process `MemorySaver` and is not durable across service restarts or scaling. Keep the desired task count at `1` unless you add shared persistent checkpoint storage.
+- To stop ongoing compute charges, delete the ECS service and cluster when finished. Separately remove unused ECR images/repositories, CloudWatch log groups, Secrets Manager secrets, and any load balancer; some of these may incur charges while retained.
+- The app needs outbound network access to OpenAI, Pinecone, market-data, and news endpoints. It is not currently configured with persistent storage or authentication.

@@ -4,20 +4,23 @@ from typing import Any
 
 import yfinance as yf
 
+from src.data.yfinance_compat import ignore_yfinance_dataframe_inplace_warning
+
 
 def get_quote(ticker: str) -> dict | None:
-    try:
-        fi = yf.Ticker(ticker).fast_info
-        price, prev = float(fi["last_price"]), float(fi["previous_close"])
-    except Exception:
+    with ignore_yfinance_dataframe_inplace_warning():
         try:
-            closes = yf.Ticker(ticker).history(period="5d")["Close"].dropna()
-            if closes.empty:
-                return None
-            price = float(closes.iloc[-1])
-            prev = float(closes.iloc[-2]) if len(closes) > 1 else price
+            fi = yf.Ticker(ticker).fast_info
+            price, prev = float(fi["last_price"]), float(fi["previous_close"])
         except Exception:
-            return None
+            try:
+                closes = yf.Ticker(ticker).history(period="5d")["Close"].dropna()
+                if closes.empty:
+                    return None
+                price = float(closes.iloc[-1])
+                prev = float(closes.iloc[-2]) if len(closes) > 1 else price
+            except Exception:
+                return None
     return {"ticker": ticker, "price": price, "prev_close": prev,
             "change_pct": (price / prev - 1) * 100 if prev else 0.0}
 

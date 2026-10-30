@@ -1,0 +1,19 @@
+flowchart TD
+    User([User]) --> UI["Streamlit web app<br/>src/web_app/app.py"]
+    UI -->|"question + optional portfolio"| Router
+
+    subgraph Graph["LangGraph workflow (MemorySaver: per-thread memory)"]
+        Router["Router<br/>LLM intent classifier + keyword fallback"]
+        Router --> Agents["Six specialised agents<br/>Finance Q&A, Portfolio, Market,<br/>Goal Planning, News, Tax<br/>(retrieve, gather context, LLM answer)"]
+    end
+
+    Agents -->|"answer + sources + disclaimer"| UI
+
+    Agents -->|"chat + embeddings"| OpenAI[("OpenAI")]
+    Agents -->|"top-k retrieval by namespace"| Pine[("Pinecone index<br/>finance-education")]
+    Agents -->|"quotes (Portfolio, Market)"| YF[("yfinance")]
+    Agents -->|"headlines (News)"| RSS[("RSS news feeds")]
+    Agents -->|"calculations (Goal Planning)"| Calc["Python calculators"]
+
+    KB["Knowledge base<br/>src/data/knowledge_base/*"] -->|"python -m src.rag.ingest"| Pine
+    Cfg["config.yaml + env vars"] -.-> Graph
