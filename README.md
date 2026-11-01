@@ -74,59 +74,71 @@ For a shared deployment, place an Application Load Balancer (HTTPS + ACM certifi
 - **AWS IAM**: Manages access to AWS services and resources securely
 
 ## Installation
-### 1. Clone the repository
-```bash
+### 1. Install prerequisites and clone the repository
+Install Python 3.14 and Git; the Docker image also uses Python 3.14.
+
+```shell
 git clone https://github.com/vxkudire/AI-Finance-Assistant.git
 cd AI-Finance-Assistant
-py -3.12 -m venv .venv312
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass; .\.venv\Scripts\Activate.ps1
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass; .\.venv312\Scripts\Activate.ps1
 ```
 
-### 2. Install dependencies
+### 2. Create and activate a virtual environment
+Run the commands for your operating system from the repository root.
 
-With `uv` (recommended):
-```bash
-uv sync
+**Windows PowerShell**
+```powershell
+py -3.14 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
-with pip:
-```bash
-pip install -r requirements.txt
-```
-> **Note for pip users:** Since you're not using `uv`, replace `uv run python` with just `python` in all the usage commands below. For example:
-> 
-> ```bash
-> python -m src.workflow.main
-> ```
-> It's also recommended to use a virtual environment:
->
-> ```bash
-> python -m venv .venv
-> source .venv/bin/activate   # Linux/macOS
-> .venv\Scripts\activate      # Windows
-> pip install -r requirements.txt
-> ```
+If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` and activate again.
 
-### 3. Configure environment variables
-Edit `.env` and add your keys:
+**macOS / Linux**
+```shell
+python3.14 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install Python dependencies
+With the virtual environment active:
+```shell
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+### 4. Configure API keys
+Create a `.env` file in the project root (there is no `.env.example`) and add your API keys:
 
 ```env
-OPENAI_API_KEY=sk-...your-key-here...
-PINECONE_API_KEY=sk-...your-key-here...
+OPENAI_API_KEY=your-openai-api-key
+PINECONE_API_KEY=your-pinecone-api-key
+POSTGRES_URL=postgresql://user:pass@localhost:5432/finance
 ```
 
-### 4. Run the application
-#### 4.1 Ingest the knowledge base
-```bash
-python -m src.rag.ingest          # creates the index and loads the sample knowledge base
+The keys are needed for model calls and Pinecone retrieval. Keep `.env` local; it is ignored by Git.
+
+### 5. Ingest the sample knowledge base
+Run this once before using the agents that rely on retrieval. It creates the configured Pinecone index if needed and uploads files from `src/data/knowledge_base/`.
+```shell
+python -m src.rag.ingest
 ```
-#### 4.2 Run the workflow graph on CLI
-```bash
+
+### 6. Start the application
+Choose either the command-line interface or the Streamlit web app:
+
+**Command-line interface**
+```shell
 python -m src.workflow.graph
 ```
-#### 4.3 Run the Streamlit web app
-```bash
+
+**Streamlit web app**
+```shell
 streamlit run src/web_app/app.py
+```
+
+### Run tests
+The unit tests do not require API keys or a Pinecone connection:
+```shell
+python -m pytest
 ```
 
 
@@ -144,18 +156,9 @@ Market Analysis	`src/agents/market_agent.py`	yfinance quotes
 Goal Planning	`src/agents/goal_planning_agent.py`	LLM extraction + Python maths + RAG `goal_planning`
 News Synthesizer	`src/agents/news_agent.py`	RSS feeds
 Tax Education	`src/agents/tax_agent.py`	RAG `tax`
-Setup
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env            # add OPENAI_API_KEY and PINECONE_API_KEY
-python -m src.rag.ingest        # creates the Pinecone index (first run) and loads src/data/knowledge_base
-streamlit run src/web_app/app.py     # or: python -m src.workflow.graph   (CLI)
-pytest                          # unit tests (no API keys needed)
-```
-## Swapping models`
+## Swapping models
 1. Everything lives in `config.yaml` -> `llm` (default for all agents).
-2. ne agent only: add `model:` / `provider:` under `agents.<name>`.
+2. For one agent only: add `model:` / `provider:` under `agents.<name>`.
 3. Quick override without editing files: `LLM_MODEL=gpt-4o` or `LLM_PROVIDER=anthropic LLM_MODEL=...`
 (install the matching `langchain-<provider>` package for non-OpenAI providers).
 4. Changing the embedding model requires matching `embeddings.dimension` and a new/re-ingested Pinecone index.
@@ -214,7 +217,7 @@ In PowerShell from the project root, choose the AWS region. Use the same region 
 ```powershell
 $Region = "us-east-1"
 $AccountId = aws sts get-caller-identity --query Account --output text
-$Repository = "ai-finance-assistant-VenkateshKudire"
+$Repository = "ai-finance-assistant-venkatesh.kudire"
 $Registry = "$AccountId.dkr.ecr.$Region.amazonaws.com"
 $Tag = "v1"
 $Image = "${Registry}/${Repository}:${Tag}"
