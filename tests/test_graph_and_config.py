@@ -20,7 +20,15 @@ def test_graph_has_all_nodes(monkeypatch):
     graph = build_graph()
     try:
         nodes = set(graph.get_graph().nodes)
-        assert {"router", "finance_qa", "portfolio", "market", "goal_planning", "news", "tax"} <= nodes
+        assert {
+            "router",
+            "finance_qa_agent",
+            "portfolio_agent",
+            "market_agent",
+            "goal_planning_agent",
+            "news_agent",
+            "tax_agent",
+        } <= nodes
     finally:
         close_checkpointer(graph.checkpointer)
 
