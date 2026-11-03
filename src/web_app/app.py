@@ -56,7 +56,8 @@ username = st.user.email.strip().lower()
 def allowed_emails() -> set[str]:
     raw = os.getenv("ALLOWED_EMAILS", "")
     try:
-        raw = raw or st.secrets.get("access", {}).get("allowed_emails", "")
+        for section in ("access", "access_control"):
+            raw = raw or st.secrets.get(section, {}).get("allowed_emails", "")
     except Exception:
         pass
     items = raw.split(",") if isinstance(raw, str) else raw
