@@ -1,4 +1,5 @@
 """Streamlit UI.   Run from project root:   streamlit run src/web_app/app.py"""
+import os
 import sys
 import time
 from pathlib import Path
@@ -39,9 +40,38 @@ def get_graph():
     return build_graph()
 
 
+if not st.user.is_logged_in:
+    st.info("Please sign in with Google to continue.")
+    st.button("Sign in with Google", icon=":material/login:", on_click=st.login, args=("google",))
+    st.stop()
+
+if not st.user.get("email_verified", False) or not st.user.get("email"):
+    st.error("Your Google account email is not verified.")
+    st.button("Sign out", on_click=st.logout)
+    st.stop()
+
+username = st.user.email.strip().lower()
+
+
+def allowed_emails() -> set[str]:
+    raw = os.getenv("ALLOWED_EMAILS", "")
+    try:
+        raw = raw or st.secrets.get("access", {}).get("allowed_emails", "")
+    except Exception:
+        pass
+    items = raw.split(",") if isinstance(raw, str) else raw
+    return {e.strip().lower() for e in items if e.strip()}
+
+
+if username not in allowed_emails():  # deny by default when the list is empty
+    st.error(f"{username} is not authorized to use this app.")
+    st.button("Sign out", on_click=st.logout)
+    st.stop()
+
 with st.sidebar:
-    username = st.text_input("Username").strip()
-    st.caption("A username is only an identifier, not a login. Anyone entering it can access that conversation.")
+    st.write(f"Signed in as **{st.user.get('name') or username}**")
+    st.caption(username)
+    st.button("Sign out", on_click=st.logout)
     st.header("Portfolio (optional)")
     df = st.data_editor(
         pd.DataFrame({"ticker": ["AAPL", "VTI"], "shares": [10.0, 25.0], "cost_basis": [150.0, 200.0]}),
@@ -88,7 +118,7 @@ if not in_chat or st.session_state.get("chat_user") != username:
 
 if in_chat:
     if not username:
-        st.info("Enter a username in the sidebar to load or start your conversation.")
+        st.info("Sign in to load or start your conversation.")
     else:
         history = st.session_state.history
         shown = history[-st.session_state.chat_limit:]

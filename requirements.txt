@@ -16,7 +16,8 @@ feedparser
 pypdf
 
 # App / utils
-streamlit
+streamlit>=1.42
+Authlib>=1.3.2
 pandas
 pydantic>=2.0
 pyyaml

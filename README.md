@@ -131,7 +131,7 @@ Choose either the command-line interface or the Streamlit web app:
 python -m src.workflow.graph
 ```
 
-**Streamlit web app**
+**Streamlit web app** (requires Google sign-in: copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and add your Google OAuth client ID/secret and the emails allowed to sign in under `[access] allowed_emails` (or `ALLOWED_EMAILS`; empty means nobody); set the redirect URI to `http://localhost:8501/oauth2callback`)
 ```shell
 streamlit run src/web_app/app.py
 ```
