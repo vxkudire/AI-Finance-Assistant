@@ -4,5 +4,9 @@ DISCLAIMER = (
 )
 
 
+def strip_disclaimer(text: str) -> str:
+    return text.split(f"\n\n---\n{DISCLAIMER}")[0].rstrip()
+
+
 def add_disclaimer(text: str) -> str:
     return f"{text.rstrip()}\n\n---\n{DISCLAIMER}"

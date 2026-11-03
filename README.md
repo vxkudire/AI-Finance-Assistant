@@ -17,11 +17,12 @@ flowchart TD
     UI -->|"question + optional portfolio"| Router
 
     subgraph Graph["LangGraph workflow (MemorySaver: per-thread memory)"]
-        Router["Router<br/>LLM intent classifier + keyword fallback"]
-        Router --> Agents["Six specialised agents<br/>Finance Q&A, Portfolio, Market,<br/>Goal Planning, News, Tax<br/>(retrieve, gather context, LLM answer)"]
+        Router["Router<br/>multi-intent LLM classifier + keyword fallback"]
+        Router -->|"1-3 intents (parallel fan-out)"| Agents["Six specialised agents<br/>Finance Q&A, Portfolio, Market,<br/>Goal Planning, News, Tax<br/>(retrieve, gather context, LLM answer)"]
+        Agents -->|"agent outputs"| Synth["Synthesizer<br/>merges answers into one reply"]
     end
 
-    Agents -->|"answer + sources + disclaimer"| UI
+    Synth -->|"answer + sources + disclaimer"| UI
 
     Agents -->|"chat + embeddings"| OpenAI[("OpenAI")]
     Agents -->|"top-k retrieval by namespace"| Pine[("Pinecone index<br/>finance-education")]
@@ -145,7 +146,7 @@ python -m pytest
 # AI Finance Assistant
 Multi-agent finance education assistant built with LangGraph, Pinecone RAG and OpenAI (swappable).
 ```
-User -> router (LLM intent classifier) -> one of 6 agents -> answer (+ sources, disclaimer)
+User -> router (LLM intent classifier, 1-3 intents) -> agent(s) in parallel -> synthesizer -> answer (+ sources, disclaimer)
                                               |-> Pinecone RAG (namespace per domain)
                                               |-> live data (yfinance quotes, RSS news) / Python calculators
 ```
@@ -170,7 +171,7 @@ Map namespaces to agents under `agents.<name>.rag_namespaces` in `config.yaml`.
 ## Adding an agent
 1. Subclass `BaseAgent` in `src/agents/` (key, prompt, optional `gather_context`).
 2. Register it in `src/agents/__init__.py`.
-3. Add the intent to `RouteDecision`/`ROUTER_PROMPT` in `src/workflow/router.py`.
+3. Add the intent to `Intent`/`ROUTER_PROMPT` in `src/workflow/router.py`.
 
 ## Notes
 Usernames identify a single conversation in the CLI and Streamlit app. With `POSTGRES_URL` configured, enter the same username to resume it across restarts; `MemorySaver` is process-local. Usernames are not authenticated, so add login before exposing the app to multiple users.

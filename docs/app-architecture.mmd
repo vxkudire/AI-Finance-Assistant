@@ -3,11 +3,12 @@ flowchart TD
     UI -->|"question + optional portfolio"| Router
 
     subgraph Graph["LangGraph workflow (MemorySaver: per-thread memory)"]
-        Router["Router<br/>LLM intent classifier + keyword fallback"]
-        Router --> Agents["Six specialised agents<br/>Finance Q&A, Portfolio, Market,<br/>Goal Planning, News, Tax<br/>(retrieve, gather context, LLM answer)"]
+        Router["Router<br/>multi-intent LLM classifier + keyword fallback"]
+        Router -->|"1-3 intents (parallel fan-out)"| Agents["Six specialised agents<br/>Finance Q&A, Portfolio, Market,<br/>Goal Planning, News, Tax<br/>(retrieve, gather context, LLM answer)"]
+        Agents -->|"agent outputs"| Synth["Synthesizer<br/>merges answers into one reply"]
     end
 
-    Agents -->|"answer + sources + disclaimer"| UI
+    Synth -->|"answer + sources + disclaimer"| UI
 
     Agents -->|"chat + embeddings"| OpenAI[("OpenAI")]
     Agents -->|"top-k retrieval by namespace"| Pine[("Pinecone index<br/>finance-education")]

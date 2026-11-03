@@ -1,4 +1,4 @@
-"""LangGraph assembly:   START -> router -> (one of six agents) -> END, with conversation memory per thread."""
+"""LangGraph assembly:   START -> router -> (one or more agents in parallel) -> synthesizer -> END, with conversation memory per thread."""
 import os
 
 from langchain_core.messages import HumanMessage
@@ -7,7 +7,10 @@ from langgraph.graph import END, START, StateGraph
 
 from src.agents import AGENT_CLASSES
 from src.core.state import AgentState
-from src.workflow.router import route_to_agent, router_node
+from src.utils.guardrails import strip_disclaimer
+from src.utils.helpers import message_text
+from src.workflow.router import route_to_agents, router_node
+from src.workflow.synthesizer import synthesizer_node
 
 
 def thread_id_for_user(username: str) -> str:
@@ -47,15 +50,29 @@ def close_checkpointer(checkpointer: object) -> None:
         conn.close()
 
 
+def agent_node(agent):
+    """Wrap an agent so its answer goes to `agent_outputs` (for the synthesizer) instead of the chat history."""
+    def node(state: AgentState) -> dict:
+        out = agent.run(state)
+        msg = out["messages"][-1]
+        raw = message_text(msg)
+        return {"agent_outputs": [{
+            "agent": agent.key, "content": strip_disclaimer(raw), "raw": raw, "sources": out.get("sources", []),
+        }]}
+    return node
+
+
 def build_graph(checkpointer=None):
     g = StateGraph(AgentState)
     g.add_node("router", router_node)
     for key, cls in AGENT_CLASSES.items():
-        g.add_node(key, cls().run)
+        g.add_node(key, agent_node(cls()))
     g.add_edge(START, "router")
-    g.add_conditional_edges("router", route_to_agent, {k: k for k in AGENT_CLASSES})
+    g.add_node("synthesizer", synthesizer_node)
+    g.add_conditional_edges("router", route_to_agents, list(AGENT_CLASSES))
     for key in AGENT_CLASSES:
-        g.add_edge(key, END)
+        g.add_edge(key, "synthesizer")
+    g.add_edge("synthesizer", END)
     return g.compile(checkpointer=checkpointer or make_checkpointer())
 
 

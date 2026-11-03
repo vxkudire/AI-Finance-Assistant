@@ -29,6 +29,8 @@ rag:
 agents:
   router:
     temperature: 0
+  synthesizer:
+    temperature: 0.2
   finance_qa_agent:
     rag_namespaces: [finance_qa]
     model: gpt-4o
