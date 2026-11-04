@@ -65,6 +65,26 @@ def test_thread_id_rejects_empty_username():
         thread_id_for_user("   ")
 
 
+def test_ask_adds_langsmith_trace_context():
+    from src.workflow.graph import ask
+
+    class FakeGraph:
+        def invoke(self, payload, config):
+            self.payload = payload
+            self.config = config
+            return {"ok": True}
+
+    graph = FakeGraph()
+    result = ask(graph, "Explain index funds", "user:alice", portfolio=[])
+
+    assert result == {"ok": True}
+    assert graph.config["run_name"] == "finance-assistant-chat"
+    assert graph.config["tags"] == ["ai-finance-assistant", "chat"]
+    assert graph.config["metadata"] == {"application": "ai-finance-assistant"}
+    assert graph.config["configurable"]["thread_id"] == "user:alice"
+    assert graph.payload["portfolio"] == []
+
+
 def test_yfinance_dataframe_inplace_warning_filter_is_narrow():
     import warnings
 

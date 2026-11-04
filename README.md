@@ -25,6 +25,7 @@ flowchart TD
     Synth -->|"answer + sources + disclaimer"| UI
 
     Agents -->|"chat + embeddings"| OpenAI[("OpenAI")]
+    Graph -.->|"optional tracing"| LS[("LangSmith")]
     Agents -->|"top-k retrieval by namespace"| Pine[("Pinecone index<br/>finance-education")]
     Agents -->|"quotes (Portfolio, Market)"| YF[("yfinance")]
     Agents -->|"headlines (News)"| RSS[("RSS news feeds")]
@@ -39,20 +40,17 @@ flowchart TD
 flowchart LR
     Dev["Developer PC<br/>Docker + AWS CLI"] -->|docker push| ECR[("Amazon ECR<br/>ai-finance-assistant")]
     subgraph AWS["AWS region"]
-        ECR -->|pull image| Task
-        SM["Secrets Manager<br/>OPENAI_API_KEY<br/>PINECONE_API_KEY"] -->|"injected at start"| Task
-        subgraph ECS["ECS cluster (Fargate)"]
-            Task["Service: 1 task<br/>Streamlit container :8080"]
-        end
-        Task --> CW["CloudWatch Logs"]
-        SG["Security group<br/>8080 from your IP"] -.-> Task
+        ECR -->|docker pull| EC2["EC2 instance<br/>Docker container :8080"]
+        SM["Secrets Manager or local .env<br/>OPENAI_API_KEY<br/>PINECONE_API_KEY"] -->|"provided at runtime"| EC2
+        EC2 --> CW["CloudWatch (optional)"]
+        SG["Security group<br/>8080 from your IP"] -.-> EC2
     end
-    Browser([Your browser]) -->|"HTTP :8080 (test)"| Task
-    Task -->|HTTPS| OpenAI[("OpenAI API")]
-    Task -->|HTTPS| Pine[("Pinecone")]
-    Task -->|HTTPS| Ext[("yfinance / RSS feeds")]
+    Browser([Your browser]) -->|"HTTP :8080 (test)"| EC2
+    EC2 -->|HTTPS| OpenAI[("OpenAI API")]
+    EC2 -->|HTTPS| Pine[("Pinecone")]
+    EC2 -->|HTTPS| Ext[("yfinance / RSS feeds")]
 ```
-For a shared deployment, place an Application Load Balancer (HTTPS + ACM certificate) in front of the task.
+For a shared deployment, place an Application Load Balancer (HTTPS + ACM certificate) in front of the instance.
 
 
 ## Technical Stack:
@@ -63,15 +61,16 @@ For a shared deployment, place an Application Load Balancer (HTTPS + ACM certifi
 - **PostgreSQL for Conversation History**: Serves as a persistent storage solution for conversation history, enabling context-aware interactions
 - **Streamlit**: Offers a user-friendly web interface for interacting with the agents, making it accessible to a wide audience
 - **OpenAI API**: Powers the natural language understanding and generation capabilities of the agents, with the flexibility to swap in other providers as needed
+- **LangSmith (optional)**: Traces LangGraph workflows and model calls for latency, errors, token usage, and run inspection
 - **YFinance**: Provides real-time financial data and market insights
 - **RSS Feeds**: Supplies up-to-date financial news for the News Synthesizer Agent
 
 ### Deployment Components:
 - **Docker**: Enables containerization of the application for consistent deployment across environments
-- **AWS ECS on Fargate**: Facilitates scalable and serverless deployment of the application, ensuring high availability and performance
+- **AWS EC2**: Runs the Streamlit container on a virtual machine you manage
 - **AWS ECR**: Provides a fully managed Docker container registry that makes it easy to store, manage, and deploy Docker container images
-- **AWS Secrets Manager**: Securely stores and manages sensitive information such as API keys, ensuring that they are not exposed in the codebase or configuration files
-- **AWS CloudWatch**: Monitors and logs application performance and operational health, providing insights for troubleshooting and optimization
+- **AWS Secrets Manager (optional)**: Stores API keys securely instead of plain-text files on the instance
+- **AWS CloudWatch (optional)**: Monitors and logs instance and application health
 - **AWS IAM**: Manages access to AWS services and resources securely
 
 ## Installation
@@ -112,10 +111,17 @@ Create a `.env` file in the project root (there is no `.env.example`) and add yo
 ```env
 OPENAI_API_KEY=your-openai-api-key
 PINECONE_API_KEY=your-pinecone-api-key
+# Optional LangSmith tracing. Uncomment and configure all three to enable:
+# LANGSMITH_TRACING=true
+# LANGSMITH_API_KEY=your-langsmith-api-key
+# LANGSMITH_PROJECT=ai-finance-assistant
 POSTGRES_URL=postgresql://user:pass@localhost:5432/finance
 ```
 
 The keys are needed for model calls and Pinecone retrieval. Keep `.env` local; it is ignored by Git.
+
+### LangSmith observability (optional)
+Set `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY`, and `LANGSMITH_PROJECT` in the process environment or root `.env` to send graph and model-call traces to LangSmith. Tracing is disabled by default; once enabled, LangSmith can inspect workflow runs, latency, failures, and model usage in the configured project. Traces may include user prompts, assistant responses, retrieved context, and conversation identifiers, so enable this only when your data-handling requirements allow sending that information to LangSmith.
 
 ### 5. Ingest the sample knowledge base
 Run this once before using the agents that rely on retrieval. It creates the configured Pinecone index if needed and uploads files from `src/data/knowledge_base/`.
@@ -180,11 +186,11 @@ Usernames identify a single conversation in the CLI and Streamlit app. With `POS
 2. Conversation memory uses `PostgresSaver` when `POSTGRES_URL` is set (e.g. `postgresql://user:pass@localhost:5432/finance`); otherwise it falls back to the in-process `MemorySaver`.
 3. Educational use only - not financial, investment or tax advice.
 
-## Deploying to AWS ECS on Fargate
+## Deploying to AWS EC2
 
-This guide deploys the Streamlit app as a single ECS task on AWS Fargate. Docker builds the image, Amazon ECR stores it, and ECS runs it on port `8080`. You need Docker Desktop, AWS CLI v2, and AWS credentials authorized to use ECR and create ECS resources. The commands below use PowerShell and the AWS Console.
+This guide deploys the app on a single EC2 instance running Docker. You build the image locally, push it to Amazon ECR, then pull and run it on EC2. You need Docker Desktop, AWS CLI v2, and AWS credentials authorized to use ECR and EC2. The commands below use PowerShell locally and shell commands on the EC2 host.
 
-**Important:** The app has no user authentication, and its test URL uses unencrypted HTTP. Restrict test access to your own IP and use only non-sensitive sample data. Before sharing it or entering personal/financial information, add authentication and HTTPS. Fargate, ECR storage, CloudWatch Logs, Secrets Manager, and any load balancer can incur charges.
+**Important:** The app has no user authentication, and the test setup uses unencrypted HTTP. Restrict access to your own IP and only use non-sensitive sample data. Before sharing it or entering personal/financial information, add authentication and HTTPS.
 
 ### 1. Ingest the knowledge base
 
@@ -197,34 +203,35 @@ python -m src.rag.ingest
 This creates/populates the Pinecone index configured in `config.yaml`. The deployed app uses that same index. Do not commit `.env` or put keys in the image.
 
 ### 2. Build and push the container image
-First Login to AWS
+First login to AWS (example profile):
 ```powershell
 $env:AWS_PROFILE="nuvepro"
 aws configure
 ```
-The terminal will prompt you for four inputs. Map them exactly to your Nuvepro dashboard like this:
-AWS Access Key ID [None]: <accessId>
-AWS Secret Access Key [None]: <accessKey>
-Default region name [None]: us-east-1
-Default output format [None]: json
+
+The terminal prompts for:
+- `AWS Access Key ID`
+- `AWS Secret Access Key`
+- `Default region name` (example: `us-east-1`)
+- `Default output format` (example: `json`)
 
 Verify the Login
 ```powershell
 aws sts get-caller-identity
 ```
 
-In PowerShell from the project root, choose the AWS region. Use the same region for ECR and ECS. Confirm the CLI is signed in and get your account ID:
+In PowerShell from the project root, choose the AWS region and get your account ID:
 
 ```powershell
 $Region = "us-east-1"
 $AccountId = aws sts get-caller-identity --query Account --output text
-$Repository = "ai-finance-assistant-venkatesh.kudire"
+$Repository = "ai-finance-assistant-venkatesh.kudire"   # lowercase only
 $Registry = "$AccountId.dkr.ecr.$Region.amazonaws.com"
 $Tag = "v1"
 $Image = "${Registry}/${Repository}:${Tag}"
 ```
 
-Run `$Image` to print the full image URI; you will paste that value into the ECS task definition.
+Run `$Image` to print the full image URI; you will use that on the EC2 host when pulling/running the container.
 
 If the identity command fails, sign in/configure the AWS CLI before continuing. Create the ECR repository once (skip this if it already exists), authenticate Docker, then build and push:
 
@@ -236,36 +243,93 @@ docker tag "${Repository}:${Tag}" $Image
 docker push $Image
 ```
 
-Keep the image tag for the task definition in the next step. For each update, set `$Tag` to a new value (for example, `v2`), recalculate `$Image`, then run the build, tag, and push commands again. Unique tags make it clear which image ECS is running.
+Keep this image URI for the EC2 run step. For each update, set `$Tag` to a new value (for example, `v2`), recalculate `$Image`, then run build/tag/push again.
 
-### 3. Create an ECS cluster and task definition
+### 3. Launch and prepare the EC2 instance
 
-In the AWS Console, make sure the selected region matches `$Region`, then:
+In the AWS Console (same `$Region`), launch an EC2 instance:
 
-1. Open **Amazon ECS → Clusters → Create cluster** and create a cluster with AWS Fargate.
-2. In **Task definitions**, create a new **Fargate** task definition for **Linux/x86_64**. Start with `0.5 vCPU` and `1 GB` memory.
-3. Configure a task execution role. The standard `AmazonECSTaskExecutionRolePolicy` allows ECS to pull from ECR and write logs. Create two separate plaintext secrets in AWS Secrets Manager, one for each API key. Grant the execution role `secretsmanager:GetSecretValue` for those secret ARNs; if the secrets use a customer-managed KMS key, grant the required decrypt permission as well. ECS retrieves these secrets when it starts the task.
-4. Add a container named `ai-finance-assistant`, using the full ECR image URI from `$Image`. Set its port mapping to TCP `8080` and enable CloudWatch Logs.
-5. In the container's **Secrets** section, map the Secrets Manager values to environment names `OPENAI_API_KEY` and `PINECONE_API_KEY`. Do not enter API keys as plain-text environment variables. Optional non-secret values such as `LLM_MODEL`, `LLM_PROVIDER`, or `LOG_LEVEL` may be set as environment variables.
-6. Create the task definition. The application does not call AWS APIs itself, so it does not need application permissions in a task role.
+1. AMI: Amazon Linux 2023 (x86_64) is a good default.
+2. Instance type: start with `t3.small` or `t3.medium` for testing.
+3. Security group inbound rules:
+   - TCP `22` from your IP (`/32`) for SSH
+   - TCP `8080` from your IP (`/32`) for app access
+4. IAM instance profile: attach a role that allows ECR pull access (for example `AmazonEC2ContainerRegistryReadOnly`).
+5. Launch and connect to the instance (EC2 Instance Connect or SSH).
 
-### 4. Run the ECS service
+On the instance, install and start Docker:
 
-From the cluster, choose **Create service**, select the task definition, and choose **Fargate** with desired task count `1`. For a test deployment, select a VPC with a public subnet whose route table has a route to an internet gateway, enable **Auto-assign public IP**, and attach a security group with:
+```bash
+sudo dnf update -y
+sudo dnf install -y docker
+sudo systemctl enable --now docker
+sudo usermod -aG docker ec2-user
+newgrp docker
+```
 
-- Inbound TCP port `8080` from **your current public IP address only** (CIDR `/32`).
-- Outbound access to the internet, needed for OpenAI, Pinecone, market data, and news.
+### 4. Pull and run the container on EC2
 
-Create the service and wait for the task to show **Running**. In the service's **Tasks** tab, open the task's networking details and browse to `http://<task-public-ip>:8080`. This address can change whenever ECS replaces the task; update the security-group rule if your own IP changes.
+On your local machine, note the values of `$Region`, `$Registry`, and `$Image`. On EC2:
 
-For a stable, shared deployment, use an Application Load Balancer with an HTTPS listener and an ACM certificate. Allow inbound HTTPS to the load balancer, and configure the task security group to accept port `8080` only from the load balancer's security group. Because the app currently has no authentication, add an authentication layer before making it available to other users.
+```bash
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+docker pull <your-image-uri>
+```
+
+Create an environment file on EC2:
+
+```bash
+sudo mkdir -p /opt/ai-finance-assistant
+sudo tee /opt/ai-finance-assistant/.env >/dev/null <<'EOF'
+OPENAI_API_KEY=your-openai-key
+PINECONE_API_KEY=your-pinecone-key
+# Optional LangSmith tracing. Uncomment and configure all three to enable:
+# LANGSMITH_TRACING=true
+# LANGSMITH_API_KEY=your-langsmith-api-key
+# LANGSMITH_PROJECT=ai-finance-assistant
+POSTGRES_URL=******localhost:5432/finance
+EOF
+sudo chmod 600 /opt/ai-finance-assistant/.env
+```
+
+Run the container:
+
+```bash
+docker run -d --name ai-finance-assistant \
+  --restart unless-stopped \
+  --env-file /opt/ai-finance-assistant/.env \
+  -p 8080:8080 \
+  <your-image-uri>
+```
+
+Verify it is healthy:
+
+```bash
+docker ps
+curl -I http://localhost:8080
+```
+
+Then open `http://<ec2-public-ip>:8080` in your browser.
 
 ### 5. Deploy an update
 
-Build and push the new image using a **new tag**. In **ECS → Task definitions**, create a new revision that uses the new image URI, then update the service to use that revision. Wait for the deployment to complete and confirm the replacement task is **Running** before removing the previous task definition revision or image.
+1. Build and push a new tag from your local machine (`v2`, `v3`, ...).
+2. On EC2: `docker pull <new-image-uri>`.
+3. Replace the running container:
+
+```bash
+docker stop ai-finance-assistant
+docker rm ai-finance-assistant
+docker run -d --name ai-finance-assistant \
+  --restart unless-stopped \
+  --env-file /opt/ai-finance-assistant/.env \
+  -p 8080:8080 \
+  <new-image-uri>
+```
 
 ### Cleanup and limitations
 
 - Conversation history uses in-process `MemorySaver` and is not durable across service restarts or scaling. Keep the desired task count at `1` unless you add shared persistent checkpoint storage.
-- To stop ongoing compute charges, delete the ECS service and cluster when finished. Separately remove unused ECR images/repositories, CloudWatch log groups, Secrets Manager secrets, and any load balancer; some of these may incur charges while retained.
-- The app needs outbound network access to OpenAI, Pinecone, market-data, and news endpoints. It is not currently configured with persistent storage or authentication.
+- To stop charges, terminate the EC2 instance and remove unused ECR repositories/images.
+- The app needs outbound internet access to OpenAI, Pinecone, market-data, and news endpoints.
+- For production, place an ALB with HTTPS in front of EC2, lock security groups, and add authentication.

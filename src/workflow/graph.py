@@ -80,7 +80,15 @@ def ask(compiled_graph, text: str, thread_id: str = "default", portfolio: list[d
     payload: dict = {"messages": [HumanMessage(content=text)]}
     if portfolio is not None:           # [] clears a previously supplied portfolio
         payload["portfolio"] = portfolio
-    return compiled_graph.invoke(payload, config={"configurable": {"thread_id": thread_id}})
+    return compiled_graph.invoke(
+        payload,
+        config={
+            "configurable": {"thread_id": thread_id},
+            "run_name": "finance-assistant-chat",
+            "tags": ["ai-finance-assistant", "chat"],
+            "metadata": {"application": "ai-finance-assistant"},
+        },
+    )
 
 
 if __name__ == "__main__":      # python -m src.workflow.graph
