@@ -1,5 +1,6 @@
 """LangGraph assembly:   START -> router -> (one or more agents in parallel) -> synthesizer -> END, with conversation memory per thread."""
 import os
+from contextlib import nullcontext
 
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -80,15 +81,30 @@ def ask(compiled_graph, text: str, thread_id: str = "default", portfolio: list[d
     payload: dict = {"messages": [HumanMessage(content=text)]}
     if portfolio is not None:           # [] clears a previously supplied portfolio
         payload["portfolio"] = portfolio
-    return compiled_graph.invoke(
-        payload,
-        config={
-            "configurable": {"thread_id": thread_id},
-            "run_name": "finance-assistant-chat",
-            "tags": ["ai-finance-assistant", "chat"],
-            "metadata": {"application": "ai-finance-assistant"},
-        },
-    )
+    config = {
+        "configurable": {"thread_id": thread_id},
+        "run_name": "finance-assistant-chat",
+        "tags": ["ai-finance-assistant", "chat"],
+        "metadata": {"application": "ai-finance-assistant"},
+    }
+
+    tracing = nullcontext()
+    if os.getenv("LANGSMITH_TRACING", "").strip().lower() in {"true", "1", "yes", "on"}:
+        api_key = os.getenv("LANGSMITH_API_KEY")
+        if not api_key:
+            raise RuntimeError("LANGSMITH_TRACING is enabled but LANGSMITH_API_KEY is not set.")
+
+        from langchain_core.tracers.context import tracing_v2_enabled
+        from langsmith import Client
+
+        tracing = tracing_v2_enabled(
+            project_name=os.getenv("LANGSMITH_PROJECT", "ai-finance-assistant"),
+            tags=["ai-finance-assistant", "chat"],
+            client=Client(api_key=api_key),
+        )
+
+    with tracing:
+        return compiled_graph.invoke(payload, config=config)
 
 
 if __name__ == "__main__":      # python -m src.workflow.graph
