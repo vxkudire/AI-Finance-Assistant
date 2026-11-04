@@ -106,7 +106,7 @@ python -m pip install -r requirements.txt
 ```
 
 ### 4. Configure API keys
-Create a `.env` file in the project root (there is no `.env.example`) and add your API keys:
+Create a `.env` file in the project root using `.env.example` as a template, then add your API keys:
 
 ```env
 OPENAI_API_KEY=your-openai-api-key
@@ -121,7 +121,7 @@ POSTGRES_URL=postgresql://user:pass@localhost:5432/finance
 The keys are needed for model calls and Pinecone retrieval. Keep `.env` local; it is ignored by Git.
 
 ### LangSmith observability (optional)
-Set `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY`, and `LANGSMITH_PROJECT` in the process environment or root `.env` to send graph and model-call traces to LangSmith. Tracing is disabled by default; once enabled, LangSmith can inspect workflow runs, latency, failures, and model usage in the configured project. Traces may include user prompts, assistant responses, retrieved context, and conversation identifiers, so enable this only when your data-handling requirements allow sending that information to LangSmith.
+The `.env.example` template includes the LangSmith settings. Uncomment `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY=your-langsmith-api-key`, and `LANGSMITH_PROJECT=ai-finance-assistant` in your root `.env`, replacing the placeholder with an API key from your LangSmith account. Tracing is disabled by default; once enabled, LangSmith can inspect graph and model-call runs, latency, failures, and model usage in the configured project. Traces may include user prompts, assistant responses, retrieved context, and conversation identifiers, so enable this only when your data-handling requirements allow sending that information to LangSmith.
 
 ### 5. Ingest the sample knowledge base
 Run this once before using the agents that rely on retrieval. It creates the configured Pinecone index if needed and uploads files from `src/data/knowledge_base/`.
@@ -283,10 +283,6 @@ sudo mkdir -p /opt/ai-finance-assistant
 sudo tee /opt/ai-finance-assistant/.env >/dev/null <<'EOF'
 OPENAI_API_KEY=your-openai-key
 PINECONE_API_KEY=your-pinecone-key
-# Optional LangSmith tracing. Uncomment and configure all three to enable:
-# LANGSMITH_TRACING=true
-# LANGSMITH_API_KEY=your-langsmith-api-key
-# LANGSMITH_PROJECT=ai-finance-assistant
 POSTGRES_URL=******localhost:5432/finance
 EOF
 sudo chmod 600 /opt/ai-finance-assistant/.env
