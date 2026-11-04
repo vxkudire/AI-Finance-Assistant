@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage
 
+from src.utils.guardrails import add_disclaimer, strip_disclaimer
 from src.workflow.graph import ask, build_graph, close_checkpointer, thread_id_for_user
 
 st.set_page_config(page_title="AI Finance Assistant", page_icon="💹", layout="wide")
@@ -129,9 +130,10 @@ if in_chat:
                 st.rerun()
             for m in shown:
                 with st.chat_message(m["role"]):
-                    st.markdown(m["content"])
+                    st.markdown(add_disclaimer(m["content"]) if m.get("agent") else m["content"])
                     if m.get("agent"):
-                        st.caption(f"Agent: {m['agent']}" + (f" | Sources: {', '.join(m['sources'])}" if m.get("sources") else ""))
+                        sources = list(dict.fromkeys(m.get("sources", [])))
+                        st.caption(f"Agent: {m['agent']}" + (f" | Sources: {', '.join(sources)}" if sources else ""))
 
 else:
     replies = [m for m in st.session_state.get("history", []) if m.get("agent")]
@@ -160,4 +162,3 @@ else:
         st.dataframe(stats, hide_index=True, use_container_width=True)
         st.bar_chart(stats.set_index("Agent")["Responses"])
         st.caption("Latency is measured for this browser session only; earlier history shows counts only.")
-
