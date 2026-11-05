@@ -111,10 +111,12 @@ Create a `.env` file in the project root using `.env.example` as a template, the
 ```env
 OPENAI_API_KEY=your-openai-api-key
 PINECONE_API_KEY=your-pinecone-api-key
+# Optional persistent conversation storage
+POSTGRES_URL=postgresql://venkat:kudire@localhost:5432/finance
 # Optional LangSmith tracing. Uncomment and configure all three to enable:
-# LANGSMITH_TRACING=true
-# LANGSMITH_API_KEY=your-langsmith-api-key
-# LANGSMITH_PROJECT=ai-finance-assistant
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your-langsmith-api-key
+LANGSMITH_PROJECT=ai-finance-assistant
 POSTGRES_URL=postgresql://user:pass@localhost:5432/finance
 ```
 
@@ -129,7 +131,13 @@ Run this once before using the agents that rely on retrieval. It creates the con
 python -m src.rag.ingest
 ```
 
-### 6. Start the application
+### 6. Run PostgreSQL (optional)
+If you want conversation history to persist across restarts, run a PostgreSQL instance and set `POSTGRES_URL` in `.env`. The default is `postgresql://venkat:kudire@localhost:5432/finance`. You can run PostgreSQL in a Docker container:
+```shell
+docker run -d --name finance-postgres -e POSTGRES_USER=venkat -e POSTGRES_PASSWORD=kudire -e POSTGRES_DB=finance -p 5432:5432 postgres:latest
+```
+
+### 7. Start the application
 Choose either the command-line interface or the Streamlit web app:
 
 **Command-line interface**
@@ -137,7 +145,7 @@ Choose either the command-line interface or the Streamlit web app:
 python -m src.workflow.graph
 ```
 
-**Streamlit web app** (requires Google sign-in: copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and add your Google OAuth client ID/secret and the emails allowed to sign in under `[access] allowed_emails` (or `ALLOWED_EMAILS`; empty means nobody); set the redirect URI to `http://localhost:8501/oauth2callback`)
+**Streamlit web app** (requires Google sign-in: copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and add your Google OAuth client ID/secret; any user with a verified Google email can sign in (publish the OAuth consent screen to allow users beyond the Test users list); set the redirect URI to `http://localhost:8501/oauth2callback`)
 ```shell
 streamlit run src/web_app/app.py
 ```
@@ -203,9 +211,9 @@ python -m src.rag.ingest
 This creates/populates the Pinecone index configured in `config.yaml`. The deployed app uses that same index. Do not commit `.env` or put keys in the image.
 
 ### 2. Build and push the container image
-First login to AWS (example profile):
+First login to AWS (example profile) [install AWS CLI if not installed](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html):
 ```powershell
-$env:AWS_PROFILE="nuvepro"
+$env:AWS_PROFILE="nuvepro" # Profile is used by the AWS CLI to find credentials in ~/.aws/credentials
 aws configure
 ```
 
@@ -242,6 +250,18 @@ docker buildx build --platform linux/amd64 --load -t "${Repository}:${Tag}" .
 docker tag "${Repository}:${Tag}" $Image
 docker push $Image
 ```
+Check if the image can be run on localhost (with your `.env` and `.streamlit/secrets.toml` in the current directory):
+```powershell
+docker network create finance-net
+docker run -d --name finance-postgres --network finance-net -e POSTGRES_USER=venkat -e POSTGRES_PASSWORD=kudire -e POSTGRES_DB=finance -p 5432:5432 postgres:latest
+docker run -d --name ai-finance-assistant --network finance-net `
+  --env-file .env `
+  -p 8501:8080 `
+  --mount "type=bind,source=$($PWD.Path)\.streamlit\secrets.toml,target=/app/.streamlit/secrets.toml,readonly" `
+  ai-finance-assistant-venkatesh.kudire:v1
+docker ps
+```
+Run the URL printed by `docker ps` in your browser (example: `http://localhost:8501`). If it works, stop the containers and continue to the EC2 deployment.
 
 Keep this image URI for the EC2 run step. For each update, set `$Tag` to a new value (for example, `v2`), recalculate `$Image`, then run build/tag/push again.
 
@@ -253,27 +273,53 @@ In the AWS Console (same `$Region`), launch an EC2 instance:
 2. Instance type: start with `t3.small` or `t3.medium` for testing.
 3. Security group inbound rules:
    - TCP `22` from your IP (`/32`) for SSH
-   - TCP `8080` from your IP (`/32`) for app access
+   - Custom TCP `8501` from your IP (`/32`) for app access
 4. IAM instance profile: attach a role that allows ECR pull access (for example `AmazonEC2ContainerRegistryReadOnly`).
 5. Launch and connect to the instance (EC2 Instance Connect or SSH).
+```powershell
+# 1. Reset permissions and clear old settings
+icacls "vxkudire.pem" /reset
 
-On the instance, install and start Docker:
+# 2. Grant explicit Read access to ONLY your current Windows user profile
+icacls "vxkudire.pem" /grant:r "$($env:USERNAME):R"
 
-```bash
-sudo dnf update -y
-sudo dnf install -y docker
-sudo systemctl enable --now docker
-sudo usermod -aG docker ec2-user
-newgrp docker
+# 3. Block all inherited permissions from other groups (System, Administrators, etc.)
+icacls "vxkudire.pem" /inheritance:r
+
+# 4. connect
+ssh -i "vxkudire.pem" ec2-user@ec2-32-201-155-101.compute-1.amazonaws.com
 ```
 
-### 4. Pull and run the container on EC2
+
+On the instance, install and start Docker:
+```bash
+sudo dnf update -y # optional 
+sudo dnf install -y docker # install Docker
+sudo systemctl enable --now docker # start Docker
+sudo usermod -aG docker ec2-user # add ec2-user to the docker group
+newgrp docker # or log out/in to apply group change
+docker --version # verify Docker is installed
+```
+
+### 4. Pull and run the containers on EC2
 
 On your local machine, note the values of `$Region`, `$Registry`, and `$Image`. On EC2:
 
 ```bash
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
-docker pull <your-image-uri>
+# check if image exists in ECR
+aws ecr describe-images --repository-name ai-finance-assistant-venkatesh.kudire --region us-east-1
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 096610775205.dkr.ecr.us-east-1.amazonaws.com
+docker pull 096610775205.dkr.ecr.us-east-1.amazonaws.com/ai-finance-assistant-venkatesh.kudire:v1
+```
+
+on EC2, create a Docker network for the app and Postgres to communicate:
+```bash
+docker network create finance-net
+```
+
+On EC2: run postgresql in a container (or install it on the host) and create the `finance` database. The app uses `POSTGRES_URL` to connect to it. Example with a local container:
+```bash
+docker run -d --name finance-postgres --network finance-net -e POSTGRES_USER=venkat -e POSTGRES_PASSWORD=kudire -e POSTGRES_DB=finance -p 5432:5432 postgres:latest
 ```
 
 Create an environment file on EC2:
@@ -283,29 +329,47 @@ sudo mkdir -p /opt/ai-finance-assistant
 sudo tee /opt/ai-finance-assistant/.env >/dev/null <<'EOF'
 OPENAI_API_KEY=your-openai-key
 PINECONE_API_KEY=your-pinecone-key
-POSTGRES_URL=******localhost:5432/finance
+POSTGRES_URL=postgresql://venkat:kudire@finance-postgres:5432/finance
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your-langsmith-key
+LANGSMITH_PROJECT=ai-finance-assistant
 EOF
+sudo chown ec2-user:ec2-user /opt/ai-finance-assistant/.env
 sudo chmod 600 /opt/ai-finance-assistant/.env
 ```
 
-Run the container:
-
-```bash
-docker run -d --name ai-finance-assistant \
-  --restart unless-stopped \
-  --env-file /opt/ai-finance-assistant/.env \
-  -p 8080:8080 \
-  <your-image-uri>
+Run below on local machine to copy secrets.toml to EC2. The app reads this file for Google sign-in.
+```powershell
+scp -i vxkudire.pem .streamlit/secrets.toml ec2-user@ec2-32-201-155-101.compute-1.amazonaws.com:~/secrets.toml
+ssh -i vxkudire.pem ec2-user@ec2-32-201-155-101.compute-1.amazonaws.com "chmod 644 ~/secrets.toml"
 ```
 
-Verify it is healthy:
+The `chown` is required: `docker run --env-file` reads the file as `ec2-user`, so a root-owned `600` file fails with "permission denied". Edit it later with `sudo nano /opt/ai-finance-assistant/.env`, then recreate the container so it picks up changes.
+
+Run the container on EC2:
+
+```bash
+docker rm -f ai-finance-assistant 2>/dev/null || true
+docker run -d --name ai-finance-assistant \
+  --network finance-net \
+  --restart unless-stopped \
+  --env-file /opt/ai-finance-assistant/.env \
+  -v ~/secrets.toml:/app/.streamlit/secrets.toml:ro \
+  -p 8501:8080 \
+  096610775205.dkr.ecr.us-east-1.amazonaws.com/ai-finance-assistant-venkatesh.kudire:v1
+```
+
+Verify on EC2 it is healthy:
 
 ```bash
 docker ps
-curl -I http://localhost:8080
+curl -I http://localhost:8501
 ```
 
-Then open `http://<ec2-public-ip>:8080` in your browser.
+Then open `http://32.201.155.101:8501` in your local machine browser.
+```text
+Example: http://<EC2-publicIp>:8501
+```
 
 ### 5. Deploy an update
 
@@ -320,7 +384,7 @@ docker run -d --name ai-finance-assistant \
   --restart unless-stopped \
   --env-file /opt/ai-finance-assistant/.env \
   -p 8080:8080 \
-  <new-image-uri>
+  096610775205.dkr.ecr.us-east-1.amazonaws.com/ai-finance-assistant-venkatesh.kudire:v1
 ```
 
 ### Cleanup and limitations
@@ -329,3 +393,47 @@ docker run -d --name ai-finance-assistant \
 - To stop charges, terminate the EC2 instance and remove unused ECR repositories/images.
 - The app needs outbound internet access to OpenAI, Pinecone, market-data, and news endpoints.
 - For production, place an ALB with HTTPS in front of EC2, lock security groups, and add authentication.
+
+
+# Instructions for DNS
+1. Pin the EC2 instance IP with an Elastic IP. 
+2. Create a free DuckDNS account and add a subdomain (example: `vxkudire.duckdns.org`).
+```powershell
+nslookup vxkudire.duckdns.org
+```
+3. Open the security group <br>
+Inbound rules: 80 and 443 from anywhere (0.0.0.0/0), 22 from your IP only. You can drop public access to 8501/8080.
+4. Install nginx and a certificate (on EC2)
+```bash
+sudo dnf install -y nginx certbot python3-certbot-nginx
+sudo systemctl enable --now nginx
+```
+Create /etc/nginx/conf.d/streamlit.conf (replace the domain, and use the host port you mapped, e.g. 8501):
+```bash
+sudo tee /etc/nginx/conf.d/streamlit.conf > /dev/null <<'EOF'
+server {
+    listen 80;
+    server_name vxkudire.duckdns.org;
+
+    location / {
+        proxy_pass http://127.0.0.1:8501;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 86400;
+    }
+}
+EOF
+```
+Then:
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d vxkudire.duckdns.org
+```
+Certbot gets the Let's Encrypt certificate, enables HTTPS, and auto-renews. If certbot isn't in the dnf repos, install it with sudo pip3 install certbot certbot-nginx.
+5. Update the redirect URI in `.streamlit/secrets.toml` to `https://vxkudire.duckdns.org/oauth2callback` and restart the container.
+6. secrets.toml: redirect_uri = "https://vxkudire.duckdns.org/oauth2callback"
+7. https://vxkudire.duckdns.org

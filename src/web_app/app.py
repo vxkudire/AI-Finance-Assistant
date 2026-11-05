@@ -1,5 +1,4 @@
 """Streamlit UI.   Run from project root:   streamlit run src/web_app/app.py"""
-import os
 import sys
 import time
 from pathlib import Path
@@ -53,22 +52,6 @@ if not st.user.get("email_verified", False) or not st.user.get("email"):
 
 username = st.user.email.strip().lower()
 
-
-def allowed_emails() -> set[str]:
-    raw = os.getenv("ALLOWED_EMAILS", "")
-    try:
-        for section in ("access", "access_control"):
-            raw = raw or st.secrets.get(section, {}).get("allowed_emails", "")
-    except Exception:
-        pass
-    items = raw.split(",") if isinstance(raw, str) else raw
-    return {e.strip().lower() for e in items if e.strip()}
-
-
-if username not in allowed_emails():  # deny by default when the list is empty
-    st.error(f"{username} is not authorized to use this app.")
-    st.button("Sign out", on_click=st.logout)
-    st.stop()
 
 with st.sidebar:
     st.write(f"Signed in as **{st.user.get('name') or username}**")
