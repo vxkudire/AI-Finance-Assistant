@@ -366,9 +366,9 @@ docker ps
 curl -I http://localhost:8501
 ```
 
-Then open `http://32.201.155.101:8501` in your local machine browser.
+Then open `https://vxkudire.duckdns.org` in your local machine browser.
 ```text
-Example: http://<EC2-publicIp>:8501
+Example: https://vxkudire.duckdns.org
 ```
 
 ### 5. Deploy an update
@@ -381,10 +381,12 @@ Example: http://<EC2-publicIp>:8501
 docker stop ai-finance-assistant
 docker rm ai-finance-assistant
 docker run -d --name ai-finance-assistant \
+  --network finance-net \
   --restart unless-stopped \
   --env-file /opt/ai-finance-assistant/.env \
-  -p 8080:8080 \
-  096610775205.dkr.ecr.us-east-1.amazonaws.com/ai-finance-assistant-venkatesh.kudire:v1
+  -v ~/secrets.toml:/app/.streamlit/secrets.toml:ro \
+  -p 8501:8080 \
+  096610775205.dkr.ecr.us-east-1.amazonaws.com/ai-finance-assistant-venkatesh.kudire:v2
 ```
 
 ### Cleanup and limitations
