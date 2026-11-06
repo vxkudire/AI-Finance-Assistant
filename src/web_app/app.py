@@ -71,6 +71,16 @@ with st.sidebar:
     )
     share = st.checkbox("Enable portfolio analysis and share with the assistant")
 
+
+def start_new_session():
+    get_graph().checkpointer.delete_thread(thread_id_for_user(username))
+    st.session_state.history = []
+    st.session_state.chat_limit = PAGE_SIZE
+
+
+with st.sidebar:
+    st.button("New session", icon=":material/add_comment:", on_click=start_new_session, width="stretch")
+
 thread_id = thread_id_for_user(username) if username else None
 if thread_id and st.session_state.get("thread_id") != thread_id:
     st.session_state.thread_id = thread_id
