@@ -69,8 +69,6 @@ For a shared deployment, place an Application Load Balancer (HTTPS + ACM certifi
 - **Docker**: Enables containerization of the application for consistent deployment across environments
 - **AWS EC2**: Runs the Streamlit container on a virtual machine you manage
 - **AWS ECR**: Provides a fully managed Docker container registry that makes it easy to store, manage, and deploy Docker container images
-- **AWS Secrets Manager (optional)**: Stores API keys securely instead of plain-text files on the instance
-- **AWS CloudWatch (optional)**: Monitors and logs instance and application health
 - **AWS IAM**: Manages access to AWS services and resources securely
 
 ## Installation
@@ -113,6 +111,8 @@ OPENAI_API_KEY=your-openai-api-key
 PINECONE_API_KEY=your-pinecone-api-key
 # Optional persistent conversation storage
 POSTGRES_URL=postgresql://venkat:kudire@localhost:5432/finance
+# Optional persistent conversation storage for Docker containerized deployment
+#POSTGRES_URL=postgresql://venkat:kudire@finance-postgres:5432/finance
 # Optional LangSmith tracing. Uncomment and configure all three to enable:
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=your-langsmith-api-key
@@ -149,6 +149,7 @@ python -m src.workflow.graph
 ```shell
 streamlit run src/web_app/app.py
 ```
+The **Portfolio** view analyzes the holdings entered in the sidebar, showing total value, concentration metrics, value by holding, sector allocation, and a holdings breakdown. Enable **Enable portfolio analysis and share with the assistant** to fetch quotes and show the dashboard; when it is off, the app does not fetch portfolio data. Use **Refresh prices** to bypass the short quote cache. Yahoo Finance quotes may be delayed. When the option is off, holdings are also excluded from assistant state and model requests receive only the current message, not prior chat history.
 
 ### Run tests
 The unit tests do not require API keys or a Pinecone connection:
@@ -157,20 +158,20 @@ python -m pytest
 ```
 
 
-# AI Finance Assistant
-Multi-agent finance education assistant built with LangGraph, Pinecone RAG and OpenAI (swappable).
+## Additional Information
+Multi-agent finance education assistant built with LangGraph, Pinecone RAG, and OpenAI (swappable).
 ```
 User -> router (LLM intent classifier, 1-3 intents) -> agent(s) in parallel -> synthesizer -> answer (+ sources, disclaimer)
                                               |-> Pinecone RAG (namespace per domain)
                                               |-> live data (yfinance quotes, RSS news) / Python calculators
 ```
 Agent	File	Grounded by
-Finance Q&A	`src/agents/finance_qa_agent.py`	RAG `finance_qa`
-Portfolio Analysis	`src/agents/portfolio_agent.py`	holdings + yfinance + RAG `portfolio`
-Market Analysis	`src/agents/market_agent.py`	yfinance quotes
-Goal Planning	`src/agents/goal_planning_agent.py`	LLM extraction + Python maths + RAG `goal_planning`
-News Synthesizer	`src/agents/news_agent.py`	RSS feeds
-Tax Education	`src/agents/tax_agent.py`	RAG `tax`
+Finance Q&A	`src/agents/finance_qa_agent.py`	RAG `finance_qa` (knowledge base: `src/data/knowledge_base/finance_qa/`) <br>
+Portfolio Analysis	`src/agents/portfolio_agent.py`	holdings + yfinance + RAG `portfolio` (knowledge base: `src/data/knowledge_base/portfolio/`) <br>
+Market Analysis	`src/agents/market_agent.py`	yfinance quotes <br>
+Goal Planning	`src/agents/goal_planning_agent.py`	LLM extraction + Python maths + RAG `goal_planning` (knowledge base: `src/data/knowledge_base/goal_planning/`) <br>
+News Synthesizer	`src/agents/news_agent.py`	RSS feeds <br>
+Tax Education	`src/agents/tax_agent.py`	RAG `tax` (knowledge base: `src/data/knowledge_base/tax/`) <br>
 ## Swapping models
 1. Everything lives in `config.yaml` -> `llm` (default for all agents).
 2. For one agent only: add `model:` / `provider:` under `agents.<name>`.
@@ -192,11 +193,11 @@ Usernames identify a single conversation in the CLI and Streamlit app. With `POS
 
 1. yfinance data is free but can be delayed; replace `src/data/market_data.py` for a paid feed.
 2. Conversation memory uses `PostgresSaver` when `POSTGRES_URL` is set (e.g. `postgresql://user:pass@localhost:5432/finance`); otherwise it falls back to the in-process `MemorySaver`.
-3. Educational use only - not financial, investment or tax advice.
+3. Educational use only - not financial, investment, or tax advice.
 
 ## Deploying to AWS EC2
 
-This guide deploys the app on a single EC2 instance running Docker. You build the image locally, push it to Amazon ECR, then pull and run it on EC2. You need Docker Desktop, AWS CLI v2, and AWS credentials authorized to use ECR and EC2. The commands below use PowerShell locally and shell commands on the EC2 host.
+This guide deploys the app on a single EC2 instance running Docker. You build the image locally, push it to Amazon ECR, then pull, and run it on EC2. You need Docker Desktop, AWS CLI v2, and AWS credentials authorized to use ECR and EC2. The commands below use PowerShell locally and shell commands on the EC2 host.
 
 **Important:** The app has no user authentication, and the test setup uses unencrypted HTTP. Restrict access to your own IP and only use non-sensitive sample data. Before sharing it or entering personal/financial information, add authentication and HTTPS.
 

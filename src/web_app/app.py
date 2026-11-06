@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage
 
+from src.data.portfolio import analyze_portfolio
 from src.utils.guardrails import add_disclaimer, strip_disclaimer
 from src.workflow.graph import ask, build_graph, close_checkpointer, thread_id_for_user
 
@@ -40,6 +41,11 @@ def get_graph():
     return build_graph()
 
 
+@st.cache_data(ttl=60)
+def get_portfolio_analysis(holdings: list[dict], refresh_version: int) -> dict:
+    return analyze_portfolio(holdings)
+
+
 if not st.user.is_logged_in:
     st.info("Please sign in with Google to continue.")
     st.button("Sign in with Google", icon=":material/login:", on_click=st.login, args=("google",))
@@ -61,8 +67,9 @@ with st.sidebar:
     df = st.data_editor(
         pd.DataFrame({"ticker": ["AAPL", "VTI"], "shares": [10.0, 25.0], "cost_basis": [150.0, 200.0]}),
         num_rows="dynamic",
+        key="portfolio_editor",
     )
-    share = st.checkbox("Share this portfolio with the assistant")
+    share = st.checkbox("Enable portfolio analysis and share with the assistant")
 
 thread_id = thread_id_for_user(username) if username else None
 if thread_id and st.session_state.get("thread_id") != thread_id:
@@ -78,7 +85,10 @@ if thread_id and st.session_state.get("thread_id") != thread_id:
         if isinstance(message, (HumanMessage, AIMessage))
     ]
 
-view = st.radio("View", ["💬 Chat", "📊 Agent Metrics"], horizontal=True, label_visibility="collapsed")
+view = st.radio(
+    "View", ["💬 Chat", "📈 Portfolio", "📊 Agent Metrics"],
+    horizontal=True, label_visibility="collapsed",
+)
 in_chat = view == "💬 Chat"
 
 if in_chat and username and (prompt := st.chat_input("Ask about investing, your goals, the markets, taxes...")):
@@ -87,7 +97,7 @@ if in_chat and username and (prompt := st.chat_input("Ask about investing, your 
     started = time.perf_counter()
     try:
         with st.spinner("Thinking..."):
-            out = ask(get_graph(), prompt, thread_id, portfolio)
+            out = ask(get_graph(), prompt, thread_id, portfolio, portfolio_shared=share)
         st.session_state.history.append({
             "role": "assistant", "content": out["messages"][-1].content,
             "agent": out["active_agent"], "sources": out.get("sources", []),
@@ -117,6 +127,75 @@ if in_chat:
                     if m.get("agent"):
                         sources = list(dict.fromkeys(m.get("sources", [])))
                         st.caption(f"Agent: {m['agent']}" + (f" | Sources: {', '.join(sources)}" if sources else ""))
+
+elif view == "📈 Portfolio":
+    st.header("Portfolio analysis")
+    if not share:
+        st.info(
+            "Portfolio analysis is disabled. Turn on **Enable portfolio analysis and share with "
+            "the assistant** in the sidebar to fetch prices and build the dashboard."
+        )
+    else:
+        st.caption(
+            "Yahoo Finance quotes may be delayed and are cached for up to 60 seconds."
+        )
+        if "portfolio_refresh_version" not in st.session_state:
+            st.session_state.portfolio_refresh_version = 0
+        if st.button("Refresh prices", icon=":material/refresh:"):
+            st.session_state.portfolio_refresh_version += 1
+
+        portfolio_holdings = df.dropna(subset=["ticker", "shares"]).to_dict("records")
+        if not portfolio_holdings:
+            st.info("Add holdings in the sidebar to see portfolio analysis.")
+        else:
+            with st.spinner("Fetching portfolio prices and sector data..."):
+                analysis = get_portfolio_analysis(
+                    portfolio_holdings, st.session_state.portfolio_refresh_version
+                )
+
+            if not analysis["rows"]:
+                st.warning("No valid holdings could be priced. Check the tickers and try refreshing.")
+            else:
+                metric_row = st.columns(4)
+                metric_row[0].metric("Portfolio value", f"${analysis['total_value']:,.2f}")
+                metric_row[1].metric("Priced positions", len(analysis["rows"]))
+                metric_row[2].metric("Largest position", f"{analysis['top_weight']:.1%}")
+                metric_row[3].metric("Effective holdings", f"{analysis['effective_holdings']:.1f}")
+
+                allocation_col, sector_col = st.columns(2)
+                with allocation_col:
+                    st.subheader("Value by holding")
+                    allocation = pd.DataFrame(
+                        [{"Ticker": row["ticker"], "Market value": row["value"]}
+                         for row in analysis["rows"]]
+                    ).sort_values("Market value", ascending=False)
+                    st.bar_chart(allocation, x="Ticker", y="Market value")
+                with sector_col:
+                    st.subheader("Sector allocation")
+                    sectors = pd.DataFrame(
+                        [{"Sector": sector, "Allocation (%)": weight * 100}
+                         for sector, weight in sorted(
+                             analysis["sectors"].items(), key=lambda item: -item[1]
+                         )]
+                    )
+                    st.bar_chart(sectors, x="Sector", y="Allocation (%)")
+
+                st.subheader("Holdings breakdown")
+                holdings_table = pd.DataFrame([
+                    {
+                        "Ticker": row["ticker"],
+                        "Shares": row["shares"],
+                        "Price": f"${row['price']:,.2f}",
+                        "Market value": f"${row['value']:,.2f}",
+                        "Allocation": f"{row['weight']:.1%}",
+                        "Sector": row["sector"],
+                        "Gain/loss": f"{row['gain_pct']:+.1f}%" if row["gain_pct"] is not None else "N/A",
+                    }
+                    for row in sorted(analysis["rows"], key=lambda item: -item["weight"])
+                ])
+                st.dataframe(holdings_table, hide_index=True)
+                if analysis["skipped"]:
+                    st.warning("Could not retrieve prices for: " + ", ".join(analysis["skipped"]))
 
 else:
     replies = [m for m in st.session_state.get("history", []) if m.get("agent")]

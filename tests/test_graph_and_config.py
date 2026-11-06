@@ -83,6 +83,43 @@ def test_ask_adds_langsmith_trace_context():
     assert graph.config["metadata"] == {"application": "ai-finance-assistant"}
     assert graph.config["configurable"]["thread_id"] == "user:alice"
     assert graph.payload["portfolio"] == []
+    assert graph.payload["portfolio_shared"] is False
+
+
+def test_unshared_portfolio_is_not_added_to_graph_state():
+    from src.workflow.graph import ask
+
+    class FakeGraph:
+        def invoke(self, payload, config):
+            self.payload = payload
+            return {"ok": True}
+
+    graph = FakeGraph()
+    ask(
+        graph, "Review my holdings", "user:alice",
+        portfolio=[{"ticker": "SECRET", "shares": 5}],
+        portfolio_shared=False,
+    )
+
+    assert graph.payload["portfolio"] == []
+    assert graph.payload["portfolio_shared"] is False
+
+
+def test_unshared_conversation_context_excludes_prior_messages():
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    from src.core.state import conversation_context
+
+    state = {
+        "messages": [
+            HumanMessage(content="My holding is SECRET"),
+            AIMessage(content="You own SECRET"),
+            HumanMessage(content="Explain diversification"),
+        ],
+        "portfolio_shared": False,
+    }
+
+    assert conversation_context(state, 10) == [state["messages"][-1]]
 
 
 def test_ask_explicitly_enables_langsmith_tracing(monkeypatch):

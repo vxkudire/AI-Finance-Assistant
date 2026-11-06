@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from src.core.base_agent import BaseAgent
 from src.core.config import agent_cfg
-from src.core.state import AgentState
+from src.core.state import AgentState, conversation_context
 from src.utils.calculators import future_value, required_monthly_contribution
 
 
@@ -32,7 +32,7 @@ assumptions, not guarantees. If target amount or timeframe is missing, ask for i
         p: GoalParams = extractor.invoke([
             SystemMessage(content="Extract financial-goal parameters from the conversation. "
                                   "Use null for anything the user has not stated. Do not guess."),
-            *state["messages"][-6:],
+            *conversation_context(state, 6),
         ])
         if not (p.target_amount and p.years):
             return "Missing target amount and/or timeframe. Ask the user for them (and current savings)."

@@ -77,10 +77,19 @@ def build_graph(checkpointer=None):
     return g.compile(checkpointer=checkpointer or make_checkpointer())
 
 
-def ask(compiled_graph, text: str, thread_id: str = "default", portfolio: list[dict] | None = None) -> dict:
-    payload: dict = {"messages": [HumanMessage(content=text)]}
-    if portfolio is not None:           # [] clears a previously supplied portfolio
-        payload["portfolio"] = portfolio
+def ask(
+    compiled_graph,
+    text: str,
+    thread_id: str = "default",
+    portfolio: list[dict] | None = None,
+    portfolio_shared: bool | None = None,
+) -> dict:
+    shared = bool(portfolio) if portfolio_shared is None else portfolio_shared
+    payload: dict = {
+        "messages": [HumanMessage(content=text)],
+        "portfolio": portfolio if shared and portfolio is not None else [],
+        "portfolio_shared": shared,
+    }
     config = {
         "configurable": {"thread_id": thread_id},
         "run_name": "finance-assistant-chat",

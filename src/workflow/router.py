@@ -5,7 +5,7 @@ from langgraph.types import Send
 from pydantic import BaseModel, Field
 
 from src.core.llm_factory import get_llm
-from src.core.state import AgentState
+from src.core.state import AgentState, conversation_context
 from src.utils.helpers import last_user_text
 from src.utils.logger import get_logger
 
@@ -60,7 +60,7 @@ def router_node(state: AgentState) -> dict:
     query = last_user_text(state["messages"])
     try:
         decision = get_llm("router").with_structured_output(RouteDecision).invoke(
-            [("system", ROUTER_PROMPT), *state["messages"][-4:]])
+            [("system", ROUTER_PROMPT), *conversation_context(state, 4)])
         intents = normalize_intents(decision.intents)
     except Exception as exc:
         log.warning("LLM routing failed (%s); using keyword fallback", exc)

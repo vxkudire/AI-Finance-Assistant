@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, SystemMessage
 
 from src.core.config import agent_cfg
 from src.core.llm_factory import get_llm
-from src.core.state import AgentState
+from src.core.state import AgentState, conversation_context
 from src.rag.retriever import format_context, retrieve
 from src.utils.guardrails import add_disclaimer
 from src.utils.helpers import last_user_text, message_text
@@ -63,7 +63,10 @@ class BaseAgent:
             parts.append("## Retrieved knowledge-base context\n" + format_context(docs))
         if live:
             parts.append("## Live / computed data\n" + live)
-        return [SystemMessage(content="\n\n".join(parts)), *state["messages"][-self.history_window:]]
+        return [
+            SystemMessage(content="\n\n".join(parts)),
+            *conversation_context(state, self.history_window),
+        ]
 
     # ---- LangGraph node entry point -----------------------------------------
     def run(self, state: AgentState) -> dict:
