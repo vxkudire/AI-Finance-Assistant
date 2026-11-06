@@ -167,6 +167,22 @@ Transient Yahoo Finance and RSS failures are retried up to twice with bounded ba
 ### MCP server (optional)
 The LangGraph market, portfolio, news, and goal-planning agents call the app's read-only finance functions through a local [Model Context Protocol](https://modelcontextprotocol.io) stdio server. The workflow launches the server automatically when one of those agents needs finance data; no separate MCP client configuration is needed. The standalone server is also available for external MCP clients. Finance data requires no API keys (quotes come from Yahoo Finance; news uses the feeds in `config.yaml`).
 
+#### Protocol implementation
+`src/mcp_server.py` implements an MCP server with the Python SDK's `FastMCP` API and stdio transport. Its six registered tools wrap the application's existing quote, market overview, RSS news, portfolio analysis, and savings calculator functions; the MCP layer serializes tabular market history and validates tool arguments before invoking those functions. It is read-only: it does not persist user portfolios or make trades.
+
+`src/core/mcp_client.py` is the synchronous adapter used by LangGraph nodes. For each request, it launches `python -m src.mcp_server` using the current Python interpreter and repository root as the working directory, opens a `ClientSession`, initializes the MCP connection, calls the requested tool or tools, reads structured results (with a JSON text fallback), and closes the stdio session. Goal planning batches its scenario calculations in one MCP session. Tool errors and malformed results are raised to the agent; the existing agent error handling then reports unavailable live/computed data rather than treating a failed call as a successful result. Because the server is started on demand, there is no separate long-running MCP process to manage for the LangGraph workflow.
+
+| Tool | Purpose and key arguments |
+|---|---|
+| `get_quotes` | Current Yahoo Finance quotes for 1–25 ticker symbols. |
+| `get_market_overview` | Major-index and sector ETF quotes plus index history for `5d`, `1mo`, `3mo`, `6mo`, `1y`, or `ytd`. |
+| `get_financial_news` | RSS headlines; optional keyword `terms` and `limit` (1–25, default from `config.yaml`). |
+| `analyze_portfolio` | Current valuation, weights, gains/losses, concentration and sector mix for 1–50 holdings (`ticker`, positive `shares`, optional non-negative per-share `cost_basis`). |
+| `project_future_value` | Savings projection from `present`, `monthly`, `annual_rate`, and `years`. |
+| `required_monthly_contribution` | Monthly savings needed for `target` from `present` at `annual_rate` over `years`. |
+
+Calculator rates are decimals (for example, `0.07` means 7%). Numeric inputs must be finite and non-negative where appropriate; calculator rates are bounded from `-0.99` through `1`, and projections are limited to 100 years. Invalid arguments produce MCP tool errors. Market quotes can be delayed; financial outputs are educational and not investment advice.
+
 Run it from the repository root (after `pip install -r requirements.txt`):
 ```shell
 python -m src.mcp_server
