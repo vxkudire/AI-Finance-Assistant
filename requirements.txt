@@ -16,6 +16,9 @@ yfinance
 feedparser
 pypdf
 
+# MCP server
+mcp>=1.9,<2
+
 # App / utils
 streamlit>=1.42
 Authlib>=1.3.2

@@ -1,7 +1,8 @@
 """2. Portfolio Analysis Agent - computes real metrics in Python, LLM explains them."""
 from src.core.base_agent import BaseAgent
+from src.core.mcp_client import call_mcp_tools, format_mcp_result
 from src.core.state import AgentState
-from src.data.portfolio import analyze_portfolio, format_portfolio_report
+from src.data.portfolio import format_portfolio_report
 
 
 class PortfolioAgent(BaseAgent):
@@ -17,4 +18,5 @@ Do NOT tell the user what to buy or sell; present considerations and trade-offs 
         if not holdings:
             return ("NO PORTFOLIO WAS PROVIDED. Ask the user to supply holdings (ticker, shares, optional "
                     "cost basis per share) and meanwhile explain generally how portfolios are reviewed.")
-        return format_portfolio_report(analyze_portfolio(holdings))
+        result = call_mcp_tools([("analyze_portfolio", {"holdings": holdings})])[0]
+        return format_portfolio_report(result)

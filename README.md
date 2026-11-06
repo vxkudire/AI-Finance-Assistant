@@ -161,6 +161,29 @@ Market quotes and index history are shared in a bounded 60-second cache, RSS fee
 
 Transient Yahoo Finance and RSS failures are retried up to twice with bounded backoff. A long `Retry-After` is respected without blocking the interface for the full delay. OpenAI clients use their SDK's two retries and a 30-second per-request timeout. If a service remains unavailable, the app reports missing data or asks the user to retry; knowledge-base retrieval and synthesis can fall back to general knowledge or individual agent responses. Other model providers use their own SDK retry and timeout settings.
 
+### MCP server (optional)
+The LangGraph market, portfolio, news, and goal-planning agents call the app's read-only finance functions through a local [Model Context Protocol](https://modelcontextprotocol.io) stdio server. The workflow launches the server automatically when one of those agents needs finance data; no separate MCP client configuration is needed. The standalone server is also available for external MCP clients. Finance data requires no API keys (quotes come from Yahoo Finance; news uses the feeds in `config.yaml`).
+
+Run it from the repository root (after `pip install -r requirements.txt`):
+```shell
+python -m src.mcp_server
+```
+
+Tools: `get_quotes`, `get_market_overview` (indices, sector ETFs, normalized performance for `5d`/`1mo`/`3mo`/`6mo`/`1y`/`ytd`), `get_financial_news`, `analyze_portfolio`, `project_future_value`, `required_monthly_contribution`. Inputs are validated (ticker format and counts, positive finite numbers, bounded limits); invalid input returns a tool error. Rates are decimals (`0.07` = 7%).
+
+Client configuration (for example Claude Desktop `claude_desktop_config.json`, or any MCP client that launches stdio servers). Use absolute paths; `cwd` must be the repository root, and `command` should be the Python from the virtual environment that has the dependencies:
+```json
+{
+  "mcpServers": {
+    "ai-finance-assistant": {
+      "command": "C:\\path\\to\\AI-Finance-Assistant\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "src.mcp_server"],
+      "cwd": "C:\\path\\to\\AI-Finance-Assistant"
+    }
+  }
+}
+```
+If your client ignores `cwd`, use `"env": {"PYTHONPATH": "C:\\path\\to\\AI-Finance-Assistant"}` instead. Logs go to stderr; quotes may be delayed and are informational, not investment advice.
 ### Run tests
 The unit tests do not require API keys or a Pinecone connection:
 ```shell

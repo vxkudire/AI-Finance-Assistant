@@ -2,7 +2,8 @@
 from src.core.config import load_config
 from src.core.state import AgentState
 from src.core.base_agent import BaseAgent
-from src.data.market_data import format_quotes, get_quotes
+from src.core.mcp_client import call_mcp_tools, format_mcp_result
+from src.data.market_data import format_quotes
 from src.utils.helpers import extract_tickers, last_user_text
 
 
@@ -16,9 +17,8 @@ data and mention they may be delayed. Never predict prices or recommend trades."
 
     def gather_context(self, state: AgentState) -> str:
         tickers = extract_tickers(last_user_text(state["messages"])) or load_config()["data"]["default_indices"]
-        quotes = get_quotes(tickers)
-        missing = [ticker for ticker in tickers if ticker not in {q["ticker"] for q in quotes}]
-        return format_quotes(quotes) + (
-            "\nSome requested quotes are unavailable: " + ", ".join(missing) + ". Tell the user."
-            if missing else ""
-        )
+        result = call_mcp_tools([("get_quotes", {"tickers": tickers})])[0]
+        context = format_quotes(result["quotes"])
+        if result.get("missing"):
+            context += "\nSome requested quotes are unavailable: " + ", ".join(result["missing"]) + ". Tell the user."
+        return context

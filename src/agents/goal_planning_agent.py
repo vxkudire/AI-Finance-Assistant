@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 
 from src.core.base_agent import BaseAgent
 from src.core.config import agent_cfg
+from src.core.mcp_client import call_mcp_tools
 from src.core.state import AgentState, conversation_context
-from src.utils.calculators import future_value, required_monthly_contribution
 
 
 class GoalParams(BaseModel):
@@ -40,14 +40,27 @@ assumptions, not guarantees. If target amount or timeframe is missing, ask for i
         default_rate = agent_cfg(self.key).get("default_annual_return", 0.06)
         scenarios = ({"user-stated return": p.expected_annual_return} if p.expected_annual_return is not None
                      else {"conservative": 0.03, "moderate": default_rate, "aggressive": 0.08})
+        calls = []
+        for rate in scenarios.values():
+            calls.append(("required_monthly_contribution", {
+                "target": p.target_amount, "present": p.current_savings, "annual_rate": rate, "years": p.years,
+            }))
+            if p.monthly_contribution is not None:
+                calls.append(("project_future_value", {
+                    "present": p.current_savings, "monthly": p.monthly_contribution,
+                    "annual_rate": rate, "years": p.years,
+                }))
+        results = iter(call_mcp_tools(calls))
         lines = [f"Goal: {p.goal_name or 'unnamed'} | target ${p.target_amount:,.0f} in {p.years:g} years | "
                  f"current savings ${p.current_savings:,.0f}",
                  "Scenarios (illustrative annual returns, compounded monthly):"]
         for label, rate in scenarios.items():
-            need = required_monthly_contribution(p.target_amount, p.current_savings, rate, p.years)
+            contribution_result = next(results)
+            need = contribution_result["required_monthly_contribution"]
             line = f"- {label} ({rate:.1%}): required monthly contribution = ${need:,.0f}"
             if p.monthly_contribution is not None:
-                fv = future_value(p.current_savings, p.monthly_contribution, rate, p.years)
+                future_value_result = next(results)
+                fv = future_value_result["future_value"]
                 line += f"; saving ${p.monthly_contribution:,.0f}/month would reach ${fv:,.0f}"
             lines.append(line)
         return "\n".join(lines)
