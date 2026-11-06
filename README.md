@@ -190,6 +190,9 @@ Or calculate the future value of monthly savings (rates are decimals, so `0.05` 
 
 These are arguments for `get_quotes` and `project_future_value`, respectively—not standalone HTTP requests. See the [MCP tools API reference](docs/mcp-api.md) for all tool arguments, response shapes, and limits.
 
+### Troubleshooting
+See the [troubleshooting guide](docs/troubleshooting.md) for help with installation, Google sign-in, model and Pinecone setup, market/news data, MCP clients, and conversation storage.
+
 ### MCP server (optional)
 The LangGraph market, portfolio, news, and goal-planning agents call the app's read-only finance functions through a local [Model Context Protocol](https://modelcontextprotocol.io) stdio server. The workflow launches the server automatically when one of those agents needs finance data; no separate MCP client configuration is needed. The standalone server is also available for external MCP clients. Finance data requires no API keys (quotes come from Yahoo Finance; news uses the feeds in `config.yaml`).
 
