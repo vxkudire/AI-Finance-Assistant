@@ -164,6 +164,32 @@ Market quotes and index history are shared in a bounded 60-second cache, RSS fee
 
 Transient Yahoo Finance and RSS failures are retried up to twice with bounded backoff. A long `Retry-After` is respected without blocking the interface for the full delay. OpenAI clients use their SDK's two retries and a 30-second per-request timeout. If a service remains unavailable, the app reports missing data or asks the user to retry; knowledge-base retrieval and synthesis can fall back to general knowledge or individual agent responses. Other model providers use their own SDK retry and timeout settings.
 
+### Usage examples
+Once the app is running, try questions like these in the chat:
+
+| What you want to do | Example prompt |
+|---|---|
+| Learn a finance concept | `Explain the difference between an ETF and a mutual fund.` |
+| Check market data | `How has the S&P 500 performed over the last month?` |
+| Review a portfolio | Enable **Enable portfolio analysis and share with the assistant**, then ask: `Review my portfolio for concentration and sector allocation.` |
+| Plan a savings goal | `I want to save $20,000 for a home down payment in five years. How much should I save each month?` |
+| Explore financial news | `Summarize recent news about interest rates.` |
+| Ask a tax question | `What is the difference between a traditional and Roth IRA?` |
+
+For an MCP client, tools are invoked by name with JSON arguments. For example, request quotes:
+
+```json
+{"tickers":["AAPL","MSFT"]}
+```
+
+Or calculate the future value of monthly savings (rates are decimals, so `0.05` means 5%):
+
+```json
+{"present":5000,"monthly":300,"annual_rate":0.05,"years":10}
+```
+
+These are arguments for `get_quotes` and `project_future_value`, respectively—not standalone HTTP requests. See the [MCP tools API reference](docs/mcp-api.md) for all tool arguments, response shapes, and limits.
+
 ### MCP server (optional)
 The LangGraph market, portfolio, news, and goal-planning agents call the app's read-only finance functions through a local [Model Context Protocol](https://modelcontextprotocol.io) stdio server. The workflow launches the server automatically when one of those agents needs finance data; no separate MCP client configuration is needed. The standalone server is also available for external MCP clients. Finance data requires no API keys (quotes come from Yahoo Finance; news uses the feeds in `config.yaml`).
 
