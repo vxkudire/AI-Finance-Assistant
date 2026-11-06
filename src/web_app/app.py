@@ -12,6 +12,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from src.data.market_data import get_market_overview
 from src.data.portfolio import analyze_portfolio
 from src.utils.guardrails import add_disclaimer, strip_disclaimer
+from src.web_app.market_charts import index_history_chart
 from src.workflow.graph import ask, build_graph, close_checkpointer, thread_id_for_user
 
 st.set_page_config(page_title="AI Finance Assistant", page_icon="💹", layout="wide")
@@ -42,14 +43,15 @@ def get_graph():
     return build_graph()
 
 
-@st.cache_data(ttl=60)
-def get_portfolio_analysis(holdings: list[dict], refresh_version: int) -> dict:
-    return analyze_portfolio(holdings)
+@st.cache_data(ttl=60, max_entries=128)
+def get_portfolio_analysis(username: str, holdings: list[dict], refresh_version: int) -> dict:
+    cache_version = f"{username}:{refresh_version}" if refresh_version else 0
+    return analyze_portfolio(holdings, cache_version=cache_version)
 
 
-@st.cache_data(ttl=60)
-def load_market_overview(period: str, refresh_version: int) -> dict:
-    return get_market_overview(period)
+@st.cache_data(ttl=60, max_entries=8)
+def load_market_overview(period: str, cache_version: str | int) -> dict:
+    return get_market_overview(period, cache_version=cache_version)
 
 
 if not st.user.is_logged_in:
@@ -153,7 +155,9 @@ elif view == "🌍 Market":
     if right.button("Refresh data", icon=":material/refresh:", width="stretch"):
         st.session_state.market_refresh = st.session_state.get("market_refresh", 0) + 1
     with st.spinner("Loading market data..."):
-        market = load_market_overview(period, st.session_state.get("market_refresh", 0))
+        refresh_version = st.session_state.get("market_refresh", 0)
+        cache_version = f"{username}:{refresh_version}" if refresh_version else 0
+        market = load_market_overview(period, cache_version)
     if not market["indices"]:
         st.warning("Market data is unavailable right now. Try again shortly.")
     else:
@@ -164,9 +168,30 @@ elif view == "🌍 Market":
         cols = st.columns(len(market["indices"]))
         for col, q in zip(cols, market["indices"]):
             col.metric(q["name"], f"{q['price']:,.2f}", f"{q['change_pct']:+.2f}%", border=True)
-        if market["history"] is not None:
-            st.subheader(f"Index performance ({period}, start = 100)")
-            st.line_chart(market["history"])
+        if market["index_levels"] is not None:
+            st.subheader("Index history")
+            chart_mode = st.segmented_control(
+                "Chart view", ["Index level", "Performance comparison"],
+                default="Index level", key="market_chart_mode",
+            ) or "Index level"
+            if chart_mode == "Index level":
+                index_names = list(market["index_levels"].columns)
+                index_name = st.selectbox("Index", index_names, key="market_chart_index")
+                st.caption("Actual index levels, one index at a time. Daily values may include the current trading session.")
+                st.altair_chart(
+                    index_history_chart(market["index_levels"][[index_name]], "Index level"),
+                    alt=f"{index_name} index level over the selected period",
+                )
+            elif market["history"] is not None:
+                st.caption("Index performance rebased to 100 at the start of the selected period.")
+                st.altair_chart(
+                    index_history_chart(market["history"], "Index performance (start = 100)"),
+                    alt="Index performance over the selected period, rebased to 100",
+                )
+            else:
+                st.info("Index performance comparison is unavailable for this period.")
+        else:
+            st.info("Index history is unavailable for this period.")
         if market["sectors"]:
             st.subheader("Sector performance today")
             sectors = pd.DataFrame(market["sectors"]).sort_values("change_pct", ascending=False)
@@ -203,7 +228,7 @@ elif view == "📈 Portfolio":
         else:
             with st.spinner("Fetching portfolio prices and sector data..."):
                 analysis = get_portfolio_analysis(
-                    portfolio_holdings, st.session_state.portfolio_refresh_version
+                    username, portfolio_holdings, st.session_state.portfolio_refresh_version
                 )
 
             if not analysis["rows"]:

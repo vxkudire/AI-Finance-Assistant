@@ -24,11 +24,14 @@ flowchart TD
 
     Synth -->|"answer + sources + disclaimer"| UI
 
+    UI -->|"portfolio analysis / market overview"| Cache
+    Agents -->|"quotes / sector metadata / feeds"| Cache
+    Cache["In-process Streamlit data cache<br/>quotes + views: 60s; news: 5m; sectors: 1h<br/>portfolio results keyed by user"]
+    Cache -->|"cache miss"| YF[("yfinance")]
+    Cache -->|"cache miss"| RSS[("RSS news feeds")]
     Agents -->|"chat + embeddings"| OpenAI[("OpenAI")]
     Graph -.->|"optional tracing"| LS[("LangSmith")]
     Agents -->|"top-k retrieval by namespace"| Pine[("Pinecone index<br/>finance-education")]
-    Agents -->|"quotes (Portfolio, Market)"| YF[("yfinance")]
-    Agents -->|"headlines (News)"| RSS[("RSS news feeds")]
     Agents -->|"calculations (Goal Planning)"| Calc["Python calculators"]
 
     KB["Knowledge base<br/>src/data/knowledge_base/*"] -->|"python -m src.rag.ingest"| Pine
@@ -41,6 +44,7 @@ flowchart LR
     Dev["Developer PC<br/>Docker + AWS CLI"] -->|docker push| ECR[("Amazon ECR<br/>ai-finance-assistant")]
     subgraph AWS["AWS region"]
         ECR -->|docker pull| EC2["EC2 instance<br/>Docker container :8080"]
+        EC2 --- Cache["In-process cache<br/>per container; no Redis"]
         SM["Secrets Manager or local .env<br/>OPENAI_API_KEY<br/>PINECONE_API_KEY"] -->|"provided at runtime"| EC2
         EC2 --> CW["CloudWatch (optional)"]
         SG["Security group<br/>8080 from your IP"] -.-> EC2
@@ -151,7 +155,9 @@ streamlit run src/web_app/app.py
 ```
 The **Portfolio** view analyzes the holdings entered in the sidebar, showing total value, concentration metrics, value by holding, sector allocation, and a holdings breakdown. Enable **Enable portfolio analysis and share with the assistant** to fetch quotes and show the dashboard; when it is off, the app does not fetch portfolio data. Use **Refresh prices** to bypass the short quote cache. Yahoo Finance quotes may be delayed. When the option is off, holdings are also excluded from assistant state and 
 
-The **Market** view shows major index levels (S&P 500, Dow, Nasdaq, Russell 2000, VIX), normalized index performance over a selectable period, and today's sector performance via sector ETFs. Data comes from Yahoo Finance (may be ~15 minutes delayed), is cached for 60 seconds, and can be reloaded with **Refresh data**.
+The **Market** view shows major index levels (S&P 500, Dow, Nasdaq, Russell 2000, VIX), a selectable index's actual daily levels over the chosen period, an optional normalized comparison of the four major stock indexes, and today's sector performance via sector ETFs. Data comes from Yahoo Finance (may be ~15 minutes delayed), is cached for 60 seconds, and can be reloaded with **Refresh data**.
+
+Market quotes are shared in a bounded 60-second cache, RSS feed responses for 5 minutes, and company sector metadata for 1 hour. Refresh buttons use a user-scoped cache version to bypass stale cached prices and portfolio metadata. Portfolio-analysis results are cached for 60 seconds per signed-in user; cache entry limits keep the in-process caches bounded.
 
 ### Run tests
 The unit tests do not require API keys or a Pinecone connection:

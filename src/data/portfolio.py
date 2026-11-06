@@ -1,5 +1,6 @@
 """Portfolio maths: values, weights, gain/loss, concentration (HHI) and sector mix."""
 import yfinance as yf
+import streamlit as st
 
 from src.data.market_data import get_quote
 from src.data.yfinance_compat import ignore_yfinance_dataframe_inplace_warning
@@ -13,7 +14,8 @@ def _num(v):
         return None
 
 
-def _sector(ticker: str) -> str:
+@st.cache_data(ttl=3600, max_entries=500)
+def _sector(ticker: str, cache_version: str | int = 0) -> str:
     try:
         with ignore_yfinance_dataframe_inplace_warning():
             info = yf.Ticker(ticker).info
@@ -22,13 +24,15 @@ def _sector(ticker: str) -> str:
         return "Unknown"
 
 
-def analyze_portfolio(holdings: list[dict], include_sector: bool = True) -> dict:
+def analyze_portfolio(
+    holdings: list[dict], include_sector: bool = True, cache_version: str | int = 0
+) -> dict:
     rows, skipped = [], []
     for h in holdings:
         t, shares = str(h.get("ticker", "")).upper().strip(), _num(h.get("shares"))
         if not t or not shares or shares <= 0:
             continue
-        q = get_quote(t)
+        q = get_quote(t, cache_version)
         if not q:
             skipped.append(t)
             continue
@@ -36,7 +40,7 @@ def analyze_portfolio(holdings: list[dict], include_sector: bool = True) -> dict
         mv = shares * q["price"]
         rows.append({"ticker": t, "shares": shares, "price": q["price"], "value": mv, "cost_basis": cb,
                      "gain_pct": (q["price"] / cb - 1) * 100 if cb else None,
-                     "sector": _sector(t) if include_sector else "n/a"})
+                     "sector": _sector(t, cache_version) if include_sector else "n/a"})
     total = sum(r["value"] for r in rows)
     for r in rows:
         r["weight"] = r["value"] / total if total else 0.0
