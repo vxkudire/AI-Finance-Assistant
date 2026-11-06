@@ -29,6 +29,7 @@ python-dotenv
 
 # Tests
 pytest
+pytest-cov
 
 typing-extensions
 psycopg-pool

@@ -1,0 +1,7 @@
+[run]
+source = src
+omit =
+    src/web_app/app.py
+
+[report]
+fail_under = 80

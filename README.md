@@ -170,6 +170,8 @@ The LangGraph market, portfolio, news, and goal-planning agents call the app's r
 #### Protocol implementation
 `src/mcp_server.py` implements an MCP server with the Python SDK's `FastMCP` API and stdio transport. Its six registered tools wrap the application's existing quote, market overview, RSS news, portfolio analysis, and savings calculator functions; the MCP layer serializes tabular market history and validates tool arguments before invoking those functions. It is read-only: it does not persist user portfolios or make trades.
 
+See the [MCP tools API reference](docs/mcp-api.md) for each tool's arguments, validation rules, response fields, and examples.
+
 `src/core/mcp_client.py` is the synchronous adapter used by LangGraph nodes. For each request, it launches `python -m src.mcp_server` using the current Python interpreter and repository root as the working directory, opens a `ClientSession`, initializes the MCP connection, calls the requested tool or tools, reads structured results (with a JSON text fallback), and closes the stdio session. Goal planning batches its scenario calculations in one MCP session. Tool errors and malformed results are raised to the agent; the existing agent error handling then reports unavailable live/computed data rather than treating a failed call as a successful result. Because the server is started on demand, there is no separate long-running MCP process to manage for the LangGraph workflow.
 
 | Tool | Purpose and key arguments |
@@ -208,6 +210,7 @@ The unit tests do not require API keys or a Pinecone connection:
 ```shell
 python -m pytest
 ```
+The test command reports coverage and fails if it falls below 80%. Coverage includes the application backend and chart helpers; `src/web_app/app.py` is excluded because it is a top-level Streamlit UI entry point.
 
 
 ## Additional Information
