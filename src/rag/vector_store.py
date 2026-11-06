@@ -43,9 +43,16 @@ class PineconeStore:
             )
         return ids
 
-    def similarity_search(self, query: str, k: int = 4) -> list[Document]:
-        res = self.index.query(vector=self.embedding.embed_query(query), top_k=k,
-                               namespace=self.namespace, include_metadata=True)
+    def similarity_search(self, query: str, k: int = 4, category: str | None = None) -> list[Document]:
+        query_args = {
+            "vector": self.embedding.embed_query(query),
+            "top_k": k,
+            "namespace": self.namespace,
+            "include_metadata": True,
+        }
+        if category is not None:
+            query_args["filter"] = {"category": {"$eq": category}}
+        res = self.index.query(**query_args)
         docs = []
         for m in _get(res, "matches"):
             meta = dict(_get(m, "metadata") or {})

@@ -5,11 +5,16 @@ from src.core.config import load_config
 from src.rag.vector_store import get_vectorstore
 
 
-def retrieve(query: str, namespaces: list[str], k: int | None = None) -> list[Document]:
+def retrieve(
+    query: str,
+    namespaces: list[str],
+    k: int | None = None,
+    category: str | None = None,
+) -> list[Document]:
     k = k or load_config()["rag"]["top_k"]
     docs: list[Document] = []
     for ns in namespaces:
-        docs.extend(get_vectorstore(ns).similarity_search(query, k=k))
+        docs.extend(get_vectorstore(ns).similarity_search(query, k=k, category=category))
     return docs
 
 

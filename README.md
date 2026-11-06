@@ -182,7 +182,7 @@ Tax Education	`src/agents/tax_agent.py`	RAG `tax` (knowledge base: `src/data/kno
 4. Changing the embedding model requires matching `embeddings.dimension` and a new/re-ingested Pinecone index.
 
 ## Adding knowledge
-Drop `.md`, `.txt` or `.pdf` files into `src/data/knowledge_base/<namespace>/` and re-run `python -m src.rag.ingest`.
+Drop `.md`, `.txt` or `.pdf` files into `src/data/knowledge_base/<namespace>/` and re-run `python -m src.rag.ingest`. The first Markdown heading (or filename when there is no heading) is stored as a normalized `category` metadata value. RAG callers can pass that exact category to `retrieve(query, namespaces, category=...)` to limit similarity search to matching content; leaving it unset keeps retrieval unfiltered.
 Map namespaces to agents under `agents.<name>.rag_namespaces` in `config.yaml`.
 
 ## Adding an agent

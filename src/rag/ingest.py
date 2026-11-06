@@ -7,6 +7,7 @@ Chunk ids are deterministic, so re-running updates in place instead of duplicati
 import argparse
 import hashlib
 from pathlib import Path
+import re
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -19,6 +20,10 @@ from src.utils.logger import get_logger
 log = get_logger("rag.ingest")
 
 
+def _category_slug(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+
+
 def load_namespace_docs(kb_dir: Path) -> dict:
     out = {}
     for ns_dir in sorted(p for p in kb_dir.iterdir() if p.is_dir()):
@@ -26,14 +31,21 @@ def load_namespace_docs(kb_dir: Path) -> dict:
         for f in sorted(ns_dir.rglob("*")):
             suffix = f.suffix.lower()
             if suffix in {".md", ".txt"}:
-                loaded = [Document(page_content=f.read_text(encoding="utf-8"))]
+                content = f.read_text(encoding="utf-8")
+                loaded = [Document(page_content=content)]
+                title = next(
+                    (line[2:].strip() for line in content.splitlines() if line.startswith("# ")),
+                    f.stem.replace("_", " "),
+                )
             elif suffix == ".pdf":
                 loaded = [Document(page_content=page.extract_text() or "", metadata={"page": i})
                           for i, page in enumerate(PdfReader(str(f)).pages)]
+                title = f.stem.replace("_", " ")
             else:
                 continue
+            category = _category_slug(title) or "uncategorized"
             for d in loaded:
-                d.metadata.update(source=f.name, namespace=ns_dir.name)
+                d.metadata.update(source=f.name, namespace=ns_dir.name, category=category)
             docs.extend(loaded)
         if docs:
             out[ns_dir.name] = docs

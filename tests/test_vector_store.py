@@ -1,5 +1,6 @@
 from langchain_core.documents import Document
 
+from src.rag.ingest import load_namespace_docs
 from src.rag.vector_store import PineconeStore
 
 
@@ -20,8 +21,12 @@ class FakeIndex:
         for v in vectors:
             self.data.setdefault(namespace, {})[v["id"]] = v
 
-    def query(self, *, top_k, vector, namespace="", include_metadata=False):
-        items = list(self.data.get(namespace, {}).values())[:top_k]
+    def query(self, *, top_k, vector, namespace="", include_metadata=False, filter=None):
+        items = list(self.data.get(namespace, {}).values())
+        if filter:
+            category = filter["category"]["$eq"]
+            items = [item for item in items if item["metadata"].get("category") == category]
+        items = items[:top_k]
         return {"matches": [{"id": v["id"], "score": 0.9, "metadata": v["metadata"]} for v in items]}
 
 
@@ -50,3 +55,26 @@ def test_batching():
     s = PineconeStore(idx, FakeEmbeddings(), "n")
     s.add_documents([Document(page_content=f"d{i}", metadata={"source": "s"}) for i in range(250)], batch_size=100)
     assert len(idx.data["n"]) == 250
+
+
+def test_category_filter_returns_only_matching_documents():
+    idx = FakeIndex()
+    store = PineconeStore(idx, FakeEmbeddings(), "finance_qa")
+    store.add_documents([
+        Document(page_content="Budgeting basics", metadata={"category": "budgeting"}),
+        Document(page_content="Bond basics", metadata={"category": "investing"}),
+    ], ids=["budget", "investing"])
+
+    hits = store.similarity_search("basics", category="budgeting")
+
+    assert [doc.page_content for doc in hits] == ["Budgeting basics"]
+
+
+def test_ingestion_assigns_category_from_markdown_heading(tmp_path):
+    finance_dir = tmp_path / "finance_qa"
+    finance_dir.mkdir()
+    (finance_dir / "budgeting.md").write_text("# Budgeting and Credit\nArticle text", encoding="utf-8")
+
+    docs = load_namespace_docs(tmp_path)["finance_qa"]
+
+    assert docs[0].metadata["category"] == "budgeting-and-credit"
