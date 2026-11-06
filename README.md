@@ -20,19 +20,21 @@ flowchart TD
         Router["Router<br/>multi-intent LLM classifier + keyword fallback"]
         Router -->|"1-3 intents (parallel fan-out)"| Agents["Six specialised agents<br/>Finance Q&A, Portfolio, Market,<br/>Goal Planning, News, Tax<br/>(retrieve, gather context, LLM answer)"]
         Agents -->|"agent outputs"| Synth["Synthesizer<br/>merges answers into one reply"]
+        Agents -->|"stdio tool calls<br/>(Market, Portfolio, News, Goals)"| MCPClient["MCP client bridge<br/>src/core/mcp_client.py"]
     end
 
     Synth -->|"answer + sources + disclaimer"| UI
 
     UI -->|"portfolio analysis / market overview"| Cache
-    Agents -->|"quotes / sector metadata / feeds"| Cache
+    MCPClient -->|"local stdio"| MCPServer["Finance MCP server<br/>src/mcp_server.py"]
+    MCPServer -->|"quotes / sector metadata / feeds"| Cache
+    MCPServer -->|"future value / contributions"| Calc["Python calculators"]
     Cache["In-process Streamlit data cache<br/>quotes + history: 60s; news: 5m; sectors: 1h"]
     Cache -->|"cache miss"| YF[("yfinance")]
     Cache -->|"cache miss"| RSS[("RSS news feeds")]
     Agents -->|"chat + embeddings"| OpenAI[("OpenAI")]
     Graph -.->|"optional tracing"| LS[("LangSmith")]
     Agents -->|"top-k retrieval by namespace"| Pine[("Pinecone index<br/>finance-education")]
-    Agents -->|"calculations (Goal Planning)"| Calc["Python calculators"]
 
     KB["Knowledge base<br/>src/data/knowledge_base/*"] -->|"python -m src.rag.ingest"| Pine
     Cfg["config.yaml + env vars"] -.-> Graph
@@ -61,6 +63,7 @@ For a shared deployment, place an Application Load Balancer (HTTPS + ACM certifi
 ### Main Components:
 - **LangChain**: Provides the framework for building and managing the agents, enabling them to communicate and collaborate effectively
 - **LangGraph**: Orchestrates the multi-agent workflow, enabling seamless interaction between agents
+- **Model Context Protocol (MCP)**: Exposes finance data and calculation functions to the LangGraph market, portfolio, news, and goal-planning agents over local stdio
 - **PineconeDB for RAG**: Provides retrieval-augmented generation capabilities, allowing agents to access a rich knowledge base for informed responses
 - **PostgreSQL for Conversation History**: Serves as a persistent storage solution for conversation history, enabling context-aware interactions
 - **Streamlit**: Offers a user-friendly web interface for interacting with the agents, making it accessible to a wide audience
