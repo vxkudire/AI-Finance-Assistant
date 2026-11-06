@@ -5,6 +5,8 @@ flowchart LR
         SM["Secrets Manager<br/>OPENAI_API_KEY<br/>PINECONE_API_KEY"] -->|"injected at start"| Task
         subgraph ECS["ECS cluster (Fargate)"]
             Task["Service: 1 task<br/>Streamlit container :8080"]
+            Cache["In-process cache<br/>per container; no Redis"]
+            Task --- Cache
         end
         Task --> CW["CloudWatch Logs"]
         SG["Security group<br/>8080 from your IP"] -.-> Task

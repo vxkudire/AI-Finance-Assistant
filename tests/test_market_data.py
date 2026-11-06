@@ -1,6 +1,14 @@
 import pandas as pd
+import pytest
 
 from src.data import market_data
+
+
+@pytest.fixture(autouse=True)
+def clear_history_cache():
+    market_data._market_history.clear()
+    yield
+    market_data._market_history.clear()
 
 
 def test_market_overview_returns_actual_levels_and_normalized_comparison(monkeypatch):
@@ -18,7 +26,7 @@ def test_market_overview_returns_actual_levels_and_normalized_comparison(monkeyp
         download_args.update(kwargs)
         return pd.concat({"Close": closes}, axis=1)
 
-    monkeypatch.setattr(market_data, "get_quotes", lambda symbols: [])
+    monkeypatch.setattr(market_data, "get_quotes_with_status", lambda symbols, version: ([], False))
     monkeypatch.setattr(market_data.yf, "download", download)
 
     result = market_data.get_market_overview("5d")
@@ -35,7 +43,7 @@ def test_market_overview_returns_actual_levels_and_normalized_comparison(monkeyp
 
 def test_market_overview_does_not_fill_missing_actual_levels(monkeypatch):
     closes = pd.DataFrame({"^GSPC": [6000.0, None, 6060.0], "^DJI": [42000.0, 42100.0, 42200.0]})
-    monkeypatch.setattr(market_data, "get_quotes", lambda symbols: [])
+    monkeypatch.setattr(market_data, "get_quotes_with_status", lambda symbols, version: ([], False))
     monkeypatch.setattr(market_data.yf, "download", lambda *args, **kwargs: pd.concat({"Close": closes}, axis=1))
 
     result = market_data.get_market_overview()
@@ -45,11 +53,10 @@ def test_market_overview_does_not_fill_missing_actual_levels(monkeypatch):
 
 
 def test_market_overview_handles_unavailable_history(monkeypatch):
-    monkeypatch.setattr(market_data, "get_quotes", lambda symbols: [])
+    monkeypatch.setattr(market_data, "get_quotes_with_status", lambda symbols, version: ([], False))
     monkeypatch.setattr(market_data.yf, "download", lambda *args, **kwargs: pd.DataFrame())
 
     result = market_data.get_market_overview()
 
     assert result["index_levels"] is None
     assert result["history"] is None
-

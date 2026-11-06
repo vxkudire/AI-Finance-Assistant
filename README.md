@@ -26,7 +26,7 @@ flowchart TD
 
     UI -->|"portfolio analysis / market overview"| Cache
     Agents -->|"quotes / sector metadata / feeds"| Cache
-    Cache["In-process Streamlit data cache<br/>quotes + views: 60s; news: 5m; sectors: 1h<br/>portfolio results keyed by user"]
+    Cache["In-process Streamlit data cache<br/>quotes + history: 60s; news: 5m; sectors: 1h"]
     Cache -->|"cache miss"| YF[("yfinance")]
     Cache -->|"cache miss"| RSS[("RSS news feeds")]
     Agents -->|"chat + embeddings"| OpenAI[("OpenAI")]
@@ -157,7 +157,9 @@ The **Portfolio** view analyzes the holdings entered in the sidebar, showing tot
 
 The **Market** view shows major index levels (S&P 500, Dow, Nasdaq, Russell 2000, VIX), a selectable index's actual daily levels over the chosen period, an optional normalized comparison of the four major stock indexes, and today's sector performance via sector ETFs. Data comes from Yahoo Finance (may be ~15 minutes delayed), is cached for 60 seconds, and can be reloaded with **Refresh data**.
 
-Market quotes are shared in a bounded 60-second cache, RSS feed responses for 5 minutes, and company sector metadata for 1 hour. Refresh buttons use a user-scoped cache version to bypass stale cached prices and portfolio metadata. Portfolio-analysis results are cached for 60 seconds per signed-in user; cache entry limits keep the in-process caches bounded.
+Market quotes and index history are shared in a bounded 60-second cache, RSS feed responses for 5 minutes, and company sector metadata for 1 hour. Refresh buttons use a user-scoped cache version to bypass stale cached prices and portfolio metadata. Portfolio calculations run on the current holdings; failures are not cached.
+
+Transient Yahoo Finance and RSS failures are retried up to twice with bounded backoff. A long `Retry-After` is respected without blocking the interface for the full delay. OpenAI clients use their SDK's two retries and a 30-second per-request timeout. If a service remains unavailable, the app reports missing data or asks the user to retry; knowledge-base retrieval and synthesis can fall back to general knowledge or individual agent responses. Other model providers use their own SDK retry and timeout settings.
 
 ### Run tests
 The unit tests do not require API keys or a Pinecone connection:

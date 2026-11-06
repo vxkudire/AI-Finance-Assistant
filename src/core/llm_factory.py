@@ -26,10 +26,13 @@ def get_llm(agent: str | None = None):
 @lru_cache(maxsize=None)
 def _build_llm(provider: str, model: str, temperature, max_tokens):
     kwargs = {k: v for k, v in {"temperature": temperature, "max_tokens": max_tokens}.items() if v is not None}
+    if provider == "openai":
+        kwargs.update(timeout=30, max_retries=2)
     return init_chat_model(model=model, model_provider=provider, **kwargs)
 
 
 @lru_cache(maxsize=1)
 def get_embeddings() -> Embeddings:
     e = load_config()["embeddings"]
-    return init_embeddings(f"{e['provider']}:{e['model']}")
+    kwargs = {"timeout": 30, "max_retries": 2} if e["provider"] == "openai" else {}
+    return init_embeddings(f"{e['provider']}:{e['model']}", **kwargs)

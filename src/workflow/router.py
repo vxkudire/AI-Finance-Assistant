@@ -63,7 +63,7 @@ def router_node(state: AgentState) -> dict:
             [("system", ROUTER_PROMPT), *conversation_context(state, 4)])
         intents = normalize_intents(decision.intents)
     except Exception as exc:
-        log.warning("LLM routing failed (%s); using keyword fallback", exc)
+        log.warning("LLM routing failed (%s); using keyword fallback", type(exc).__name__)
         intents = keyword_fallback_multi(query)
     log.info("routed -> %s", intents)
     return {"intents": intents, "intent": intents[0], "agent_outputs": None}

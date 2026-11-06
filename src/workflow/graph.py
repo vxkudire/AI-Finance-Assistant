@@ -9,7 +9,9 @@ from langgraph.graph import END, START, StateGraph
 from src.agents import AGENT_CLASSES
 from src.core.state import AgentState
 from src.utils.guardrails import strip_disclaimer
+from src.utils.api_errors import user_error_message
 from src.utils.helpers import message_text
+from src.utils.logger import get_logger
 from src.workflow.router import route_to_agents, router_node
 from src.workflow.synthesizer import synthesizer_node
 
@@ -127,7 +129,12 @@ if __name__ == "__main__":      # python -m src.workflow.graph
         graph = build_graph(checkpointer)
         print("AI Finance Assistant - type 'quit' to exit")
         while (q := input("\nYou: ").strip()).lower() not in {"quit", "exit"}:
-            out = ask(graph, q, tid)
+            try:
+                out = ask(graph, q, tid)
+            except Exception as exc:
+                get_logger("cli").error("Chat request failed (%s)", type(exc).__name__)
+                print(f"\n{user_error_message(exc)}")
+                continue
             print(f"\n[{out['active_agent']}] {out['messages'][-1].content}")
             if out.get("sources"):
                 print("Sources:", ", ".join(out["sources"]))

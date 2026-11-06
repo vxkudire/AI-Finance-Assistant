@@ -78,7 +78,10 @@ def ensure_index() -> str:
             metric=p.get("metric", "cosine"),
             spec=ServerlessSpec(cloud=p["cloud"], region=p["region"]),
         )
+        deadline = time.monotonic() + 60
         while not _get(_get(pc.describe_index(name), "status"), "ready"):
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Pinecone index did not become ready in time")
             time.sleep(1)
     return name
 

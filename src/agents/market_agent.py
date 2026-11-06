@@ -16,4 +16,9 @@ data and mention they may be delayed. Never predict prices or recommend trades."
 
     def gather_context(self, state: AgentState) -> str:
         tickers = extract_tickers(last_user_text(state["messages"])) or load_config()["data"]["default_indices"]
-        return format_quotes(get_quotes(tickers))
+        quotes = get_quotes(tickers)
+        missing = [ticker for ticker in tickers if ticker not in {q["ticker"] for q in quotes}]
+        return format_quotes(quotes) + (
+            "\nSome requested quotes are unavailable: " + ", ".join(missing) + ". Tell the user."
+            if missing else ""
+        )

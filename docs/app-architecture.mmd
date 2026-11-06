@@ -10,10 +10,13 @@ flowchart TD
 
     Synth -->|"answer + sources + disclaimer"| UI
 
+    UI -->|"portfolio analysis / market overview"| Cache
+    Agents -->|"quotes / sector metadata / feeds"| Cache
+    Cache["In-process Streamlit data cache<br/>quotes + history: 60s; news: 5m; sectors: 1h"]
+    Cache -->|"cache miss"| YF[("yfinance")]
+    Cache -->|"cache miss"| RSS[("RSS news feeds")]
     Agents -->|"chat + embeddings"| OpenAI[("OpenAI")]
     Agents -->|"top-k retrieval by namespace"| Pine[("Pinecone index<br/>finance-education")]
-    Agents -->|"quotes (Portfolio, Market)"| YF[("yfinance")]
-    Agents -->|"headlines (News)"| RSS[("RSS news feeds")]
     Agents -->|"calculations (Goal Planning)"| Calc["Python calculators"]
 
     KB["Knowledge base<br/>src/data/knowledge_base/*"] -->|"python -m src.rag.ingest"| Pine

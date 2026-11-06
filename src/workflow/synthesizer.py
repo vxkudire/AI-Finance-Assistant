@@ -43,7 +43,7 @@ def synthesizer_node(state: AgentState) -> dict:
         ])
         text = message_text(reply)
     except Exception as exc:
-        log.warning("synthesis failed (%s); concatenating agent answers", exc)
+        log.warning("synthesis failed (%s); concatenating agent answers", type(exc).__name__)
         text = _fallback(outputs)
     log.info("synthesized %s", agents)
     return {"messages": [AIMessage(content=add_disclaimer(strip_disclaimer(text)), name="synthesizer")],

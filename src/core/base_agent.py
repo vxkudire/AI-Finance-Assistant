@@ -41,20 +41,20 @@ class BaseAgent:
         return ""
 
     # ---- internals -----------------------------------------------------------
-    def _retrieve(self, query: str) -> list[Document]:
+    def _retrieve(self, query: str) -> tuple[list[Document], bool]:
         if not (self.use_rag and self.namespaces and query):
-            return []
+            return [], False
         try:
-            return retrieve(query, self.namespaces)
+            return retrieve(query, self.namespaces), False
         except Exception as exc:  # a RAG outage must not kill the agent
-            self.log.warning("RAG retrieval failed: %s", exc)
-            return []
+            self.log.warning("RAG retrieval failed (%s)", type(exc).__name__)
+            return [], True
 
     def _live_context(self, state: AgentState) -> str:
         try:
             return self.gather_context(state)
         except Exception as exc:
-            self.log.warning("gather_context failed: %s", exc)
+            self.log.warning("gather_context failed (%s)", type(exc).__name__)
             return "Live data was unavailable for this request; tell the user."
 
     def _build_prompt(self, state: AgentState, docs: list[Document], live: str):
@@ -71,12 +71,17 @@ class BaseAgent:
     # ---- LangGraph node entry point -----------------------------------------
     def run(self, state: AgentState) -> dict:
         query = last_user_text(state["messages"])
-        docs = self._retrieve(query)
+        docs, retrieval_failed = self._retrieve(query)
         live = self._live_context(state)
+        if retrieval_failed:
+            live += "\nThe knowledge base is unavailable. Tell the user and distinguish general knowledge from sourced information."
         reply = self.llm.invoke(self._build_prompt(state, docs, live))
         sources = sorted({d.metadata.get("source", "unknown") for d in docs})
+        text = message_text(reply)
+        if retrieval_failed:
+            text += "\n\nThe knowledge base was unavailable, so this answer could not be checked against it."
         return {
-            "messages": [AIMessage(content=add_disclaimer(message_text(reply)), name=self.key)],
+            "messages": [AIMessage(content=add_disclaimer(text), name=self.key)],
             "active_agent": self.key,
             "sources": sources,
         }

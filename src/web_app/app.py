@@ -12,6 +12,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from src.data.market_data import get_market_overview
 from src.data.portfolio import analyze_portfolio
 from src.utils.guardrails import add_disclaimer, strip_disclaimer
+from src.utils.api_errors import user_error_message
+from src.utils.logger import get_logger
 from src.web_app.market_charts import index_history_chart
 from src.workflow.graph import ask, build_graph, close_checkpointer, thread_id_for_user
 
@@ -43,13 +45,11 @@ def get_graph():
     return build_graph()
 
 
-@st.cache_data(ttl=60, max_entries=128)
 def get_portfolio_analysis(username: str, holdings: list[dict], refresh_version: int) -> dict:
     cache_version = f"{username}:{refresh_version}" if refresh_version else 0
     return analyze_portfolio(holdings, cache_version=cache_version)
 
 
-@st.cache_data(ttl=60, max_entries=8)
 def load_market_overview(period: str, cache_version: str | int) -> dict:
     return get_market_overview(period, cache_version=cache_version)
 
@@ -122,7 +122,8 @@ if in_chat and username and (prompt := st.chat_input("Ask about investing, your 
             "latency": time.perf_counter() - started,
         })
     except Exception as exc:
-        st.session_state.history.append({"role": "assistant", "content": f"Error: {exc}", "error": True})
+        get_logger("web_app").error("Chat request failed (%s)", type(exc).__name__)
+        st.session_state.history.append({"role": "assistant", "content": user_error_message(exc), "error": True})
 
 PAGE_SIZE = 10
 if not in_chat or st.session_state.get("chat_user") != username:
@@ -161,6 +162,8 @@ elif view == "🌍 Market":
     if not market["indices"]:
         st.warning("Market data is unavailable right now. Try again shortly.")
     else:
+        if market["missing_quotes"]:
+            st.warning("Some market quotes are unavailable. Try refreshing later.")
         st.caption(
             f"As of {market['as_of']:%Y-%m-%d %H:%M UTC}. Source: Yahoo Finance via yfinance; "
             "quotes may be delayed ~15 minutes. Cached for 60 seconds."
@@ -232,10 +235,17 @@ elif view == "📈 Portfolio":
                 )
 
             if not analysis["rows"]:
-                st.warning("No valid holdings could be priced. Check the tickers and try refreshing.")
+                st.warning("No holdings could be priced. Check the tickers or try again later if market data is unavailable.")
             else:
+                if analysis["skipped"]:
+                    st.warning("Some holdings could not be priced. Values and allocations cover priced holdings only.")
+                if "Unknown" in analysis["sectors"]:
+                    st.warning("Sector information is unavailable for some holdings.")
                 metric_row = st.columns(4)
-                metric_row[0].metric("Portfolio value", f"${analysis['total_value']:,.2f}")
+                metric_row[0].metric(
+                    "Priced holdings value" if analysis["skipped"] else "Portfolio value",
+                    f"${analysis['total_value']:,.2f}",
+                )
                 metric_row[1].metric("Priced positions", len(analysis["rows"]))
                 metric_row[2].metric("Largest position", f"{analysis['top_weight']:.1%}")
                 metric_row[3].metric("Effective holdings", f"{analysis['effective_holdings']:.1f}")
