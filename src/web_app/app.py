@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage
 
+from src.data.market_data import get_market_overview
 from src.data.portfolio import analyze_portfolio
 from src.utils.guardrails import add_disclaimer, strip_disclaimer
 from src.workflow.graph import ask, build_graph, close_checkpointer, thread_id_for_user
@@ -44,6 +45,11 @@ def get_graph():
 @st.cache_data(ttl=60)
 def get_portfolio_analysis(holdings: list[dict], refresh_version: int) -> dict:
     return analyze_portfolio(holdings)
+
+
+@st.cache_data(ttl=60)
+def load_market_overview(period: str, refresh_version: int) -> dict:
+    return get_market_overview(period)
 
 
 if not st.user.is_logged_in:
@@ -96,7 +102,7 @@ if thread_id and st.session_state.get("thread_id") != thread_id:
     ]
 
 view = st.radio(
-    "View", ["💬 Chat", "📈 Portfolio", "📊 Agent Metrics"],
+    "View", ["💬 Chat", "📈 Portfolio", "🌍 Market", "📊 Agent Metrics"],
     horizontal=True, label_visibility="collapsed",
 )
 in_chat = view == "💬 Chat"
@@ -137,6 +143,43 @@ if in_chat:
                     if m.get("agent"):
                         sources = list(dict.fromkeys(m.get("sources", [])))
                         st.caption(f"Agent: {m['agent']}" + (f" | Sources: {', '.join(sources)}" if sources else ""))
+
+elif view == "🌍 Market":
+    st.header("Market overview")
+    left, right = st.columns([3, 1], vertical_alignment="bottom")
+    period = left.segmented_control(
+        "Performance period", ["5d", "1mo", "3mo", "6mo", "1y"], default="1mo", key="market_period",
+    ) or "1mo"
+    if right.button("Refresh data", icon=":material/refresh:", width="stretch"):
+        st.session_state.market_refresh = st.session_state.get("market_refresh", 0) + 1
+    with st.spinner("Loading market data..."):
+        market = load_market_overview(period, st.session_state.get("market_refresh", 0))
+    if not market["indices"]:
+        st.warning("Market data is unavailable right now. Try again shortly.")
+    else:
+        st.caption(
+            f"As of {market['as_of']:%Y-%m-%d %H:%M UTC}. Source: Yahoo Finance via yfinance; "
+            "quotes may be delayed ~15 minutes. Cached for 60 seconds."
+        )
+        cols = st.columns(len(market["indices"]))
+        for col, q in zip(cols, market["indices"]):
+            col.metric(q["name"], f"{q['price']:,.2f}", f"{q['change_pct']:+.2f}%", border=True)
+        if market["history"] is not None:
+            st.subheader(f"Index performance ({period}, start = 100)")
+            st.line_chart(market["history"])
+        if market["sectors"]:
+            st.subheader("Sector performance today")
+            sectors = pd.DataFrame(market["sectors"]).sort_values("change_pct", ascending=False)
+            st.bar_chart(sectors.set_index("name")["change_pct"], y_label="Change vs previous close (%)")
+            st.dataframe(
+                sectors[["name", "ticker", "price", "change_pct"]],
+                hide_index=True, width="stretch",
+                column_config={
+                    "name": "Sector", "ticker": "ETF",
+                    "price": st.column_config.NumberColumn("Price", format="$%.2f"),
+                    "change_pct": st.column_config.NumberColumn("Change", format="%+.2f%%"),
+                },
+            )
 
 elif view == "📈 Portfolio":
     st.header("Portfolio analysis")

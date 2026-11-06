@@ -149,7 +149,9 @@ python -m src.workflow.graph
 ```shell
 streamlit run src/web_app/app.py
 ```
-The **Portfolio** view analyzes the holdings entered in the sidebar, showing total value, concentration metrics, value by holding, sector allocation, and a holdings breakdown. Enable **Enable portfolio analysis and share with the assistant** to fetch quotes and show the dashboard; when it is off, the app does not fetch portfolio data. Use **Refresh prices** to bypass the short quote cache. Yahoo Finance quotes may be delayed. When the option is off, holdings are also excluded from assistant state and model requests receive only the current message, not prior chat history.
+The **Portfolio** view analyzes the holdings entered in the sidebar, showing total value, concentration metrics, value by holding, sector allocation, and a holdings breakdown. Enable **Enable portfolio analysis and share with the assistant** to fetch quotes and show the dashboard; when it is off, the app does not fetch portfolio data. Use **Refresh prices** to bypass the short quote cache. Yahoo Finance quotes may be delayed. When the option is off, holdings are also excluded from assistant state and 
+
+The **Market** view shows major index levels (S&P 500, Dow, Nasdaq, Russell 2000, VIX), normalized index performance over a selectable period, and today's sector performance via sector ETFs. Data comes from Yahoo Finance (may be ~15 minutes delayed), is cached for 60 seconds, and can be reloaded with **Refresh data**.
 
 ### Run tests
 The unit tests do not require API keys or a Pinecone connection:
