@@ -346,10 +346,11 @@ docker run -d --name finance-postgres \
   -e POSTGRES_DB=finance \
   -p 5432:5432 \
   postgres:latest
-docker run -d --name ai-finance-assistant --network finance-net `
-  --env-file .env `
-  -p 8501:8080 `
-  --mount "type=bind,source=$($PWD.Path)\.streamlit\secrets.toml,target=/app/.streamlit/secrets.toml,readonly" `
+docker run -d --name ai-finance-assistant \
+  --network finance-net \
+  --env-file .env \
+  -p 8501:8080 \
+  --mount "type=bind,source=$($PWD.Path)\.streamlit\secrets.toml,target=/app/.streamlit/secrets.toml,readonly" \
   ai-finance-assistant-venkatesh.kudire:v1
 docker ps
 ```
