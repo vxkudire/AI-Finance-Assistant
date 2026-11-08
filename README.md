@@ -338,7 +338,14 @@ docker push $Image
 Check if the image can be run on localhost (with your `.env` and `.streamlit/secrets.toml` in the current directory):
 ```powershell
 docker network create finance-net
-docker run -d --name finance-postgres --network finance-net -e POSTGRES_USER=venkat -e POSTGRES_PASSWORD=kudire -e POSTGRES_DB=finance -p 5432:5432 postgres:latest
+docker run -d --name finance-postgres \
+  --network finance-net \
+  --restart unless-stopped \
+  -e POSTGRES_USER=venkat \
+  -e POSTGRES_PASSWORD=kudire \
+  -e POSTGRES_DB=finance \
+  -p 5432:5432 \
+  postgres:latest
 docker run -d --name ai-finance-assistant --network finance-net `
   --env-file .env `
   -p 8501:8080 `
@@ -405,7 +412,14 @@ docker network create finance-net
 On EC2: run postgresql in a container (or install it on the host) and create the `finance` database. The app uses `POSTGRES_URL` to connect to it. Example with a local container:
 replace `venkat` and `kudire` with your own username/password if you prefer. The app will create the tables on first run.
 ```bash
-docker run -d --name finance-postgres --network finance-net -e POSTGRES_USER=venkat -e POSTGRES_PASSWORD=kudire -e POSTGRES_DB=finance -p 5432:5432 postgres:latest
+docker run -d --name finance-postgres \
+  --network finance-net \
+  --restart unless-stopped \
+  -e POSTGRES_USER=venkat \
+  -e POSTGRES_PASSWORD=kudire \
+  -e POSTGRES_DB=finance \
+  -p 5432:5432 \
+  postgres:latest
 ```
 
 Create an environment file on EC2:
