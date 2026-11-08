@@ -82,7 +82,7 @@ For a shared deployment, place an Application Load Balancer (HTTPS + ACM certifi
 ### 1. Install prerequisites and clone the repository
 Install Python 3.14 and Git; the Docker image also uses Python 3.14.
 
-```shell
+```powershell
 git clone https://github.com/vxkudire/AI-Finance-Assistant.git
 cd AI-Finance-Assistant
 ```
@@ -355,28 +355,28 @@ Keep this image URI for the EC2 run step. For each update, set `$Tag` to a new v
 In the AWS Console (same `$Region`), launch an EC2 instance:
 
 1. AMI: Amazon Linux 2023 (x86_64) is a good default.
-2. Instance type: start with `t3.small` or `t3.medium` for testing.
+2. Instance type: start with `t3.small`, `t3.medium`, `t3.large` or `t3.xlarge` for testing.
 3. Security group inbound rules:
    - TCP `22` from your IP (`/32`) for SSH
    - Custom TCP `8501` from your IP (`/32`) for app access
 4. IAM instance profile: attach a role that allows ECR pull access (for example `AmazonEC2ContainerRegistryReadOnly`).
-5. Launch and connect to the instance (EC2 Instance Connect or SSH).
+5. Setup Elastic IP or DNS (for example, DuckDNS) to access the app from your browser. Note the public IP or DNS name for later. Associate Elastic IP to the EC2 instance. Ex: 32-201-155-101
+6. Launch and connect to the instance (EC2 Instance Connect or SSH).
 ```powershell
-# 1. Reset permissions and clear old settings
+# 1. The key file created during EC2 instance launch is "vxkudire.pem" in my Downloads folder. Move it to the project root and set permissions:
+Move-Item -Path "$env:USERPROFILE\Downloads\vxkudire.pem" -Destination "$PWD\vxkudire.pem"
+# Reset permissions and clear old settings
 icacls "vxkudire.pem" /reset
-
 # 2. Grant explicit Read access to ONLY your current Windows user profile
 icacls "vxkudire.pem" /grant:r "$($env:USERNAME):R"
-
 # 3. Block all inherited permissions from other groups (System, Administrators, etc.)
 icacls "vxkudire.pem" /inheritance:r
-
 # 4. connect
 ssh -i "vxkudire.pem" ec2-user@ec2-32-201-155-101.compute-1.amazonaws.com
 ```
 
 
-On the instance, install and start Docker:
+On the EC2 instance, install and start Docker:
 ```bash
 sudo dnf update -y # optional 
 sudo dnf install -y docker # install Docker
@@ -403,12 +403,12 @@ docker network create finance-net
 ```
 
 On EC2: run postgresql in a container (or install it on the host) and create the `finance` database. The app uses `POSTGRES_URL` to connect to it. Example with a local container:
+replace `venkat` and `kudire` with your own username/password if you prefer. The app will create the tables on first run.
 ```bash
 docker run -d --name finance-postgres --network finance-net -e POSTGRES_USER=venkat -e POSTGRES_PASSWORD=kudire -e POSTGRES_DB=finance -p 5432:5432 postgres:latest
 ```
 
 Create an environment file on EC2:
-
 ```bash
 sudo mkdir -p /opt/ai-finance-assistant
 sudo tee /opt/ai-finance-assistant/.env >/dev/null <<'EOF'
